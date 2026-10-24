@@ -5,6 +5,11 @@ pydantic[email]==2.10.4
 pydantic-settings==2.7.0
 python-multipart==0.0.20
 
+# PDF 授權書與簽名圖檔
+reportlab==4.2.5
+pypdf==5.1.0
+Pillow==11.0.0
+
 # 測試用
 pytest==8.3.4
 httpx==0.28.1

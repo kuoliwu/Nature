@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>驗屋代理授權書</title>
+<style>
+  :root { color-scheme: light; --primary: #1d4ed8; --border: #d1d5db; --muted: #6b7280; --danger: #b91c1c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; background: #f3f4f6; color: #111827; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; text-align: center; margin: 8px 0 16px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card h2 { font-size: 16px; margin: 0 0 10px; }
+  dl { display: grid; grid-template-columns: 5.5em 1fr; gap: 6px 8px; margin: 0; font-size: 15px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  ol { margin: 0; padding-left: 0; list-style: none; font-size: 14px; line-height: 1.7; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 12px 0 6px; }
+  label .opt { font-weight: 400; color: var(--muted); }
+  input[type=text], input[type=email] { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; }
+  .pad-wrap { position: relative; border: 2px dashed var(--border); border-radius: 10px; background: #fff; }
+  canvas { display: block; width: 100%; height: 200px; touch-action: none; }
+  .pad-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9ca3af; pointer-events: none; }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .link { background: none; border: none; color: var(--primary); font-size: 15px; padding: 6px 0; }
+  .agree { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+  .agree input { margin-top: 3px; width: 18px; height: 18px; }
+  .submit { width: 100%; padding: 14px; font-size: 17px; font-weight: 600; color: #fff; background: var(--primary); border: none; border-radius: 10px; margin-top: 8px; }
+  .submit:disabled { opacity: 0.5; }
+  .error { color: var(--danger); font-size: 14px; margin-top: 10px; white-space: pre-line; }
+  .done { text-align: center; padding: 32px 16px; }
+  .done .icon { font-size: 48px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>驗屋代理授權書</h1>
+  <div id="loading" class="card">載入中…</div>
+  <div id="fatal" class="card error" hidden></div>
+
+  <form id="form" hidden novalidate>
+    <section class="card">
+      <h2>房屋資料</h2>
+      <dl id="summary"></dl>
+    </section>
+
+    <section class="card">
+      <h2>授權範圍</h2>
+      <ol id="clauses"></ol>
+    </section>
+
+    <section class="card" id="owner-fields" hidden>
+      <h2>委託人（屋主）與受託人資料</h2>
+      <label for="owner_name">屋主姓名</label>
+      <input type="text" id="owner_name" autocomplete="name" required>
+      <div id="id-field" hidden>
+        <label for="owner_id_number">屋主身分證字號 <span class="opt">（核對戶別用）</span></label>
+        <input type="text" id="owner_id_number" autocapitalize="characters" autocomplete="off">
+      </div>
+      <label for="owner_email">屋主 Email <span class="opt">（選填，完成後寄送授權書）</span></label>
+      <input type="email" id="owner_email" autocomplete="email">
+      <label for="trustee_name">受託人姓名</label>
+      <input type="text" id="trustee_name" required>
+      <label for="trustee_email">受託人 Email <span class="opt">（將寄送簽署邀請）</span></label>
+      <input type="email" id="trustee_email" required>
+    </section>
+
+    <section class="card">
+      <h2 id="pad-title">簽名</h2>
+      <div class="pad-wrap">
+        <canvas id="pad"></canvas>
+        <div class="pad-hint" id="pad-hint">請在此框內簽名</div>
+      </div>
+      <div class="row">
+        <span class="opt" style="color:var(--muted);font-size:13px">手指或觸控筆書寫</span>
+        <button type="button" class="link" id="clear">清除重簽</button>
+      </div>
+      <label class="agree"><input type="checkbox" id="agree"> <span>我已閱讀並同意上述授權內容，並同意以電子簽名簽署本授權書。</span></label>
+      <button type="submit" class="submit" id="submit">送出簽名</button>
+      <div class="error" id="error"></div>
+    </section>
+  </form>
+
+  <section id="done" class="card done" hidden>
+    <div class="icon">✅</div>
+    <p id="done-text"></p>
+  </section>
+</main>
+
+<script>
+const CONFIG = __CONFIG__;
+const $ = (id) => document.getElementById(id);
+
+// ---------- 簽名板 ----------
+const canvas = $('pad');
+const ctx = canvas.getContext('2d');
+let drawing = false, hasInk = false, last = null;
+
+function resizeCanvas() {
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2.6;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#111827';
+  clearPad();
+}
+function clearPad() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  hasInk = false;
+  $('pad-hint').hidden = false;
+}
+function point(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+canvas.addEventListener('pointerdown', (e) => {
+  drawing = true; last = point(e);
+  canvas.setPointerCapture(e.pointerId);
+  $('pad-hint').hidden = true;
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!drawing) return;
+  const p = point(e);
+  ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+  last = p; hasInk = true;
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => canvas.addEventListener(t, () => { drawing = false; }));
+$('clear').addEventListener('click', clearPad);
+
+// ---------- API ----------
+async function api(path, options = {}) {
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const d = data && data.detail;
+    const msg = typeof d === 'string' ? d
+      : Array.isArray(d) ? d.map((x) => x.msg).join('\n')
+      : `伺服器錯誤 (${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function showSummary(rows) {
+  $('summary').innerHTML = '';
+  for (const [k, v] of rows) {
+    const dt = document.createElement('dt'); dt.textContent = k;
+    const dd = document.createElement('dd'); dd.textContent = v;
+    $('summary').append(dt, dd);
+  }
+}
+
+function fatal(msg) {
+  $('loading').hidden = true;
+  $('form').hidden = true;
+  $('fatal').textContent = msg;
+  $('fatal').hidden = false;
+}
+
+async function init() {
+  for (const c of CONFIG.clauses) {
+    const li = document.createElement('li'); li.textContent = c; $('clauses').append(li);
+  }
+  try {
+    if (CONFIG.mode === 'owner') {
+      const b = await api(`/api/public/authorize/${encodeURIComponent(CONFIG.token)}`);
+      showSummary([['建案', b.project_name], ['戶別', b.unit_no], ['驗屋時間', b.inspection_date]]);
+      $('owner-fields').hidden = false;
+      $('id-field').hidden = !b.require_id_verification;
+      $('pad-title').textContent = '委託人（屋主）簽名';
+    } else {
+      const s = await api(`/api/public/sign/${encodeURIComponent(CONFIG.token)}`);
+      showSummary([
+        ['建案', s.project_name], ['戶別', s.unit_no], ['驗屋時間', s.inspection_date],
+        ['委託人', s.owner_name], ['受託人', `${s.trustee_name}（${s.trustee_email}）`],
+      ]);
+      $('pad-title').textContent = '受託人簽名';
+    }
+  } catch (e) {
+    return fatal(e.message);
+  }
+  $('loading').hidden = true;
+  $('form').hidden = false;
+  resizeCanvas();
+}
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('error').textContent = '';
+  const val = (id) => $(id).value.trim();
+
+  if (CONFIG.mode === 'owner') {
+    if (!val('owner_name') || !val('trustee_name') || !val('trustee_email')) {
+      return ($('error').textContent = '請填寫屋主姓名、受託人姓名與 Email');
+    }
+    if (!$('id-field').hidden && !val('owner_id_number')) {
+      return ($('error').textContent = '請填寫身分證字號');
+    }
+  }
+  if (!hasInk) return ($('error').textContent = '請先簽名');
+  if (!$('agree').checked) return ($('error').textContent = '請勾選同意授權內容');
+
+  const signature = canvas.toDataURL('image/png');
+  $('submit').disabled = true;
+  $('submit').textContent = '送出中…';
+  try {
+    if (CONFIG.mode === 'owner') {
+      await api(`/api/public/authorize/${encodeURIComponent(CONFIG.token)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          owner_name: val('owner_name'),
+          owner_email: val('owner_email') || null,
+          owner_id_number: val('owner_id_number') || null,
+          trustee_name: val('trustee_name'),
+          trustee_email: val('trustee_email'),
+          owner_signature: signature,
+        }),
+      });
+      $('done-text').textContent = `已寄出簽署邀請給 ${val('trustee_email')}。受託人完成簽名後，授權書 PDF 會以 Email 寄出。`;
+    } else {
+      await api(`/api/public/sign/${encodeURIComponent(CONFIG.token)}`, {
+        method: 'POST',
+        body: JSON.stringify({ trustee_signature: signature }),
+      });
+      $('done-text').textContent = '簽署完成！驗屋代理授權書 PDF 已寄到您與屋主的信箱。';
+    }
+    $('form').hidden = true;
+    $('done').hidden = false;
+  } catch (err) {
+    $('error').textContent = err.message;
+    $('submit').disabled = false;
+    $('submit').textContent = '送出簽名';
+  }
+});
+
+init();
+</script>
+</body>
+</html>

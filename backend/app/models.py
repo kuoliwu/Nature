@@ -7,7 +7,7 @@
   4. 預約頁面設定      batch_faqs, batch_attachments,
                        custom_forms, custom_form_fields, form_submissions, form_submission_files
   5. 檢查項目          inspection_categories, inspection_items, inspection_check_points, inspection_results
-  6. 線上授權          authorizations
+  6. 線上授權          authorizations, access_links
   7. 報告與提醒        reports, report_reminders
 """
 
@@ -505,6 +505,30 @@ class Authorization(TimestampMixin, Base):
     completed_at: Mapped[datetime | None]
 
     booking: Mapped[Booking] = relationship(back_populates="authorizations")
+
+    @property
+    def has_pdf(self) -> bool:
+        return self.pdf_path is not None
+
+
+class AccessLink(Base):
+    """傳給外部使用者（屋主）的限時連結。用隨機 token 取代可被猜測的流水號。"""
+
+    __tablename__ = "access_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(30))  # 見 LinkPurpose
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+    expires_at: Mapped[datetime]
+    revoked_at: Mapped[datetime | None]
+
+    booking: Mapped[Booking] = relationship()
+
+
+class LinkPurpose:
+    OWNER_AUTHORIZATION = "owner_authorization"
 
 
 # ---------------------------------------------------------------------------

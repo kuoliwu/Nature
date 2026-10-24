@@ -22,8 +22,11 @@
 **終端機 ①：啟動後端**（Wi-Fi 與 5G 都一樣）
 
 ```bash
-cd ~/stock/nature/nature/backend && source .venv/bin/activate && python run.py
+cd ~/stock/nature/nature/backend && source .venv/bin/activate && python run.py            # 只給自己用
+cd ~/stock/nature/nature/backend && source .venv/bin/activate && python run.py --tunnel   # 外部的屋主 / 受託人也要能開簽名頁
 ```
+
+已設定固定網址的 Tailscale Funnel（第 9 節方案 A）時，用 `python run.py` 即可，不需要 `--tunnel`。
 
 **終端機 ②：啟動 APP 開發伺服器**（依手機目前的網路擇一）
 
@@ -44,6 +47,9 @@ cd ~/stock/nature/nature/backend && source .venv/bin/activate && python run.py
 | 電腦上看 API 文件 | 瀏覽器開 `http://127.0.0.1:8000/docs` |
 | 手機瀏覽器測試連線 | Wi-Fi：`http://192.168.68.109:8000/health`　5G：`http://100.76.33.111:8000/health` |
 | 後端測試 | `cd backend && source .venv/bin/activate && pytest -q` |
+| 建立示範預約（測簽名流程） | `cd backend && source .venv/bin/activate && python -m scripts.create_demo_booking` |
+| 產生屋主連結 | `cd backend && source .venv/bin/activate && python -m scripts.owner_link <預約編號>` |
+| 查看測試信件（未設定 SMTP 時） | `cd backend && source .venv/bin/activate && python -m scripts.show_outbox` |
 | APP 測試 / 型別檢查 | `cd mobile && npm test && npm run typecheck` |
 | 查 Tailscale IP | WSL：`ip -4 addr \| grep 'inet 100\.'`　Windows：`tailscale ip -4` |
 
@@ -146,7 +152,10 @@ python run.py
   本機 API 文件       ：http://127.0.0.1:8000/docs
   手機 APP（Wi-Fi）   ：http://192.168.68.109:8000
   手機 APP（5G）      ：http://100.76.33.111:8000
+  對外公開頁面        ：未開啟（要給外部的人使用時改用 python run.py --tunnel）
 ```
+
+使用 `python run.py --tunnel` 時，約 5～10 秒後會再顯示對外網址。
 
 若 Tailscale 沒有連線，5G 那行會顯示「未偵測到 Tailscale」。
 
@@ -242,6 +251,190 @@ npm run 5g       # 手機走 5G / 4G（需開 Tailscale）時
 
 ---
 
+## 8. 線上授權（數位簽名 + PDF 授權書 + Email）
+
+### 流程
+
+```
+管理員產生屋主專屬連結（python -m scripts.owner_link <預約編號>），用 LINE / 簡訊傳給屋主
+屋主開啟 /authorize/{token}
+  └─ 填受託人姓名、Email，手機上簽名 ──▶ 系統寄「簽署邀請」給受託人（連結 7 天有效）
+受託人點信中連結 /sign/{token}
+  └─ 確認內容、手機上簽名 ──▶ 系統把兩個簽名疊到合約範本 → 產生 PDF
+                                └─ Email 寄給屋主與受託人（附 PDF）
+```
+
+| 網址 / API | 誰使用 | 說明 |
+|---|---|---|
+| `POST /bookings/{booking_id}/authorization-link` | 管理員 | 產生屋主專屬連結（30 天有效，重複產生沿用同一個） |
+| `GET /authorize/{token}` | 屋主 | 簽名網頁 |
+| `GET /sign/{token}` | 受託人 | 簽名網頁（Email 連結） |
+| `GET /authorizations?booking_id=&status=` | 管理員 | 查詢授權書 |
+| `GET /authorizations/{id}/pdf` | 管理員 | 下載授權書 PDF |
+| `POST /authorizations/{id}/resend-invite` | 管理員 | 重寄邀請（舊連結失效，可救回已過期的邀請） |
+| `POST /authorizations/{id}/cancel` | 管理員 | 取消未完成的授權 |
+
+**屋主重新送出時，以最後一次為準**：屋主可以用同一個連結再填一次（例如受託人 Email 打錯、或想換受託人）。
+- 先前的授權書一律作廢，**已經簽完的也一樣**，舊的受託人連結會顯示「已由屋主更新或取消」。
+- 新的受託人會收到新的簽署邀請。
+- 如果換了受託人，舊受託人會收到一封「先前邀請作廢」的通知信。
+- 作廢的紀錄與 PDF 仍保留，可以用 `GET /authorizations?booking_id=` 查詢。
+
+### 更新套件（從步驟二升級時要做一次）
+
+```bash
+cd ~/stock/nature/nature/backend && source .venv/bin/activate && pip install -r requirements.txt
+```
+
+### 在手機上試用
+
+1. 啟動後端：`python run.py`
+2. 另開終端機建立一筆示範預約：
+   ```bash
+   cd ~/stock/nature/nature/backend && source .venv/bin/activate
+   python -m scripts.create_demo_booking                          # 不需身分證驗證
+   python -m scripts.create_demo_booking --id-number A123456789   # 需要輸入身分證字號
+   ```
+   會印出「外網連結」與「區網連結」。外網連結需要先啟動通道（第 9 節）；只在自己手機測試時用區網連結即可
+   （5G + Tailscale 時把網址中的 `192.168.68.109` 換成 `100.76.33.111`）。
+3. 手機瀏覽器開啟連結，填資料並簽名送出。
+4. 尚未設定 SMTP 時，信件不會真的寄出，而是存成檔案：`backend/storage/outbox/*.eml`。
+   用以下指令顯示最新一封信的內容（.eml 內文經過編碼，用記事本打開看不懂）：
+   ```bash
+   python -m scripts.show_outbox
+   ```
+   把信中的 `/sign/...` 連結輸入手機瀏覽器，以受託人身分簽名。
+5. 完成後：
+   - PDF 在 `backend/storage/authorizations/AUTH-000001.pdf`
+   - 也可以從 `http://127.0.0.1:8000/docs` 呼叫 `GET /authorizations/{id}/pdf` 下載
+   - outbox 會多一封附有 PDF 的「授權書簽署完成」信
+
+### 設定真的寄信（以 Gmail 為例）
+
+1. Google 帳戶 → 安全性 → 開啟「兩步驟驗證」。
+2. Google 帳戶搜尋「**應用程式密碼**」→ 建立一組（名稱隨意），會得到 16 碼密碼。
+3. 編輯 `backend/.env`：
+   ```ini
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=你的帳號@gmail.com
+   SMTP_PASSWORD=16碼應用程式密碼（不含空格）
+   MAIL_FROM=你的帳號@gmail.com
+   ```
+4. 重新啟動 `run.py`。寄信失敗不會影響簽署流程，錯誤會顯示在 `run.py` 的終端機。
+
+Gmail 個人帳號每天約可寄 500 封；量大時改用公司郵件主機或 SendGrid 等服務，只要改上面的 SMTP 設定。
+
+### 受託人在外網怎麼開連結？
+
+啟動對外通道（第 9 節）後，屋主連結與 Email 中的受託人連結都會自動使用對外網址。
+沒有啟動通道時，連結是區網位址（`192.168.68.109`），只有你自己的手機打得開。
+
+### 換成自己的合約範本
+
+- **字型**：預設使用 Windows 的標楷體（`C:\Windows\Fonts\kaiu.ttf`）。換電腦或想用其他字型時，把 `.ttf` 放到 `backend/fonts/`，或在 `.env` 設定 `PDF_FONT_PATH`。
+- **合約內容**：條文在 `backend/app/services/pdf.py` 的 `CLAUSES`，簽名網頁會顯示同一份條文。
+  ⚠️ 預設條文只是範例，正式使用前請請法務或律師審閱。
+- **使用現成的 PDF 範本**：把一頁的 PDF 放到 `backend/storage/templates/authorization_template.pdf`，系統就會改用它當底圖。
+  再依範本上的位置調整 `pdf.py` 中 `LAYOUT` 的座標（單位 pt，原點在左下角，A4 為 595 × 842）。
+
+---
+
+## 9. 對外公開頁面（讓外部的屋主、受託人開啟簽名頁）
+
+外部的人用手機直接開啟簽名頁，不需要安裝任何東西。
+
+### 安全設計
+
+`run.py` 會同時啟動兩個伺服器：
+
+| Port | 綁定 | 內容 | 誰連得到 |
+|---|---|---|---|
+| 8000 | 0.0.0.0 | 管理 API + 公開頁面 + `/docs` | 你的 Wi-Fi、Tailscale |
+| 8001 | 127.0.0.1 | **只有**屋主 / 受託人簽名頁 | 只有本機，對外通道只轉發到這裡 |
+
+對外通道只轉發 8001，所以外部**完全碰不到** `/init-db`、授權書下載等管理功能。
+屋主連結使用隨機 token（例如 `/authorize/5Mc5JW8W…`），無法用流水號猜到其他戶的資料。
+
+### 連結的組成
+
+```
+https://xxxx.trycloudflare.com/authorize/5Mc5JW8Wvm0w7iB88GzhKNim697hF71M
+└──────── 對外網址（網域）────────┘└──────── 屋主專屬亂數，存在資料庫，30 天有效 ────────┘
+```
+
+亂數部分**不會**因為重新啟動而改變。會變的只有快速通道的網域，所以正式使用時請改用下面的固定網址。
+
+### 三種方式比較
+
+| | 快速通道（測試用） | **A. Tailscale Funnel（建議）** | B. Cloudflare 具名通道 |
+|---|---|---|---|
+| 網址 | `https://隨機字.trycloudflare.com` | `https://laptop-agv125d3.<你的 tailnet>.ts.net` | `https://sign.你的網域.com` |
+| 重開後網址 | **會變** | 固定 | 固定 |
+| 費用 | 免費 | 免費 | 網域約 US$10／年 |
+| 需要 | cloudflared | 已安裝的 Tailscale | Cloudflare 帳號 + 自己的網域 |
+| 啟動方式 | `python run.py --tunnel` | `python run.py`（Funnel 由 Windows 的 Tailscale 常駐） | `python run.py --tunnel` |
+
+### 快速通道（測試用）
+
+1. 安裝 cloudflared（只需一次）：
+   ```bash
+   mkdir -p ~/.local/bin
+   curl -fL -o ~/.local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+   chmod +x ~/.local/bin/cloudflared
+   ~/.local/bin/cloudflared --version
+   ```
+   `run.py` 會自動到 `~/.local/bin` 找 cloudflared，不需要設定 PATH。
+2. 啟動後端 + 通道：`python run.py --tunnel`，等它顯示「✅ 對外網址」。
+3. 另開終端機產生屋主連結：`python -m scripts.owner_link <預約編號>`
+
+`Ctrl + C` 會同時關閉後端與通道。重開後網域會變，先前傳出去、還沒簽完的連結要重新執行 `owner_link` 再傳一次。
+
+### 方案 A：Tailscale Funnel（固定網址，免費）
+
+利用你已經安裝的 Tailscale，把 8001 開放到網際網路，網址固定不變。
+
+1. 在 **Windows PowerShell**（不需要系統管理員）執行：
+   ```powershell
+   tailscale funnel --bg 8001
+   ```
+   第一次執行時會顯示一個網址，要你到 Tailscale 管理頁面開啟 **HTTPS** 與 **Funnel** 功能。照著網址開啟後，再執行一次同樣的指令。
+2. 成功後會顯示固定網址，例如 `https://laptop-agv125d3.tail1234.ts.net`。也可以用 `tailscale funnel status` 查詢。
+3. 編輯 `backend/.env`，加入：
+   ```ini
+   PUBLIC_BASE_URL=https://laptop-agv125d3.tail1234.ts.net
+   ```
+4. 重新啟動 `python run.py`（**不需要** `--tunnel`），第 4 行會顯示固定網址。
+5. 手機關掉 Wi-Fi 與 Tailscale，用 5G 開啟該網址，看到「✅ 連線正常」就完成了。
+
+- Funnel 會一直保持開啟，電腦重開機後也一樣（只要 Windows 的 Tailscale 有執行）。不用每次設定。
+- 關閉 Funnel：`tailscale funnel --https=443 off`
+- 如果之前用過第 6 節的 `tailscale serve --bg 8000`，它和 Funnel 都使用 443 port，請先用 `tailscale serve --https=443 off` 關掉。
+
+### 方案 B：Cloudflare 具名通道（固定網址，使用自己的網域）
+
+適合想讓客戶看到公司網域（例如 `https://sign.公司.com`）的情況。
+
+1. 註冊 Cloudflare 帳號，並把網域加入 Cloudflare（可以直接在 Cloudflare 購買網域）。
+2. Cloudflare 後台 → **Zero Trust** → Networks → **Tunnels** → Create a tunnel → 選 **Cloudflared** → 輸入名稱。
+3. 頁面上的安裝指令中，`--token` 後面那一長串就是 token，複製下來（不用執行那段安裝指令）。
+4. 在 **Public Hostname** 新增：
+   - Subdomain：`sign`，Domain：你的網域
+   - Service：`HTTP`，URL：`localhost:8001`
+5. 編輯 `backend/.env`：
+   ```ini
+   CLOUDFLARE_TUNNEL_TOKEN=剛才複製的 token
+   PUBLIC_BASE_URL=https://sign.你的網域.com
+   ```
+6. 以後都用 `python run.py --tunnel` 啟動。
+
+### 注意事項
+
+- 屋主連結 30 天有效、受託人邀請連結 7 天有效。
+- 電腦關機或 `run.py` 停止時，外部無法開啟頁面（網址不變，開機後重新執行就恢復）。
+
+---
+
 ## 疑難排解
 
 | 狀況 | 原因 / 解法 |
@@ -252,4 +445,10 @@ npm run 5g       # 手機走 5G / 4G（需開 Tailscale）時
 | 手機 5G 連不到 | 正常現象，見第 6 節 |
 | APP 顯示「金鑰錯誤 (403)」 | APP 的管理金鑰和 `backend/.env` 的 `ADMIN_INIT_KEY` 不一致；改了 `.env` 要重新啟動 `run.py` |
 | APP 顯示「連線逾時」 | 後端沒有在執行，或 IP 已經改變，請重新看 `run.py` 印出的位址 |
+| 授權書 PDF 中文變成方塊或空白 | 找不到繁中字型：把 `.ttf` 放到 `backend/fonts/`，或在 `.env` 設定 `PDF_FONT_PATH` |
+| 沒收到簽署邀請信 | 未設定 SMTP 時信件在 `backend/storage/outbox/`；已設定時看 `run.py` 終端機的錯誤訊息，並檢查垃圾郵件匣 |
+| 受託人打不開簽署連結 | 屋主簽名時沒有對外網址，連結是區網位址：設定對外網址（第 9 節）後，用 `POST /authorizations/{id}/resend-invite` 重寄 |
+| `run.py` 顯示「Port 8000 已被占用」 | 另一個終端機的 `run.py` 還在執行：到那個終端機按 `Ctrl + C`；找不到的話用 `ss -ltnp \| grep 8000` 查 pid 後 `kill <pid>` |
+| 通道顯示 `dial tcp 127.0.0.1:8001: connect: connection refused` | 8001 沒有在執行：確認 `run.py` 正在執行，或重新啟動它 |
+| 外網連結打不開 | ① `run.py` 是否在執行 ② 快速通道重開過、網域已改變：重新執行 `owner_link` ③ 使用 Funnel 時，在 PowerShell 執行 `tailscale funnel status` 確認 |
 | Windows 10 不支援 mirrored | 系統管理員 PowerShell 執行：`netsh interface portproxy add v4tov4 listenport=8000 listenaddress=0.0.0.0 connectport=8000 connectaddress=<WSL IP>`（WSL IP 用 `hostname -I` 查詢，每次重開機可能改變） |

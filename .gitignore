@@ -8,3 +8,6 @@ backend/data/*
 !backend/data/.gitkeep
 backend/storage/*
 !backend/storage/.gitkeep
+
+backend/fonts/*
+!backend/fonts/.gitkeep

@@ -5,9 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
-from app.routers import projects, system
+from app.routers import authorizations, projects, system
 
-STORAGE_SUBDIRS = ["signatures", "authorizations", "reports", "attachments", "form_uploads"]
+STORAGE_SUBDIRS = [
+    "signatures", "authorizations", "reports", "attachments", "form_uploads", "outbox", "templates",
+]
 
 
 @asynccontextmanager
@@ -34,3 +36,5 @@ def root():
 
 app.include_router(system.router)
 app.include_router(projects.router)
+app.include_router(authorizations.public)
+app.include_router(authorizations.admin)

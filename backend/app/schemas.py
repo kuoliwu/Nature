@@ -95,3 +95,59 @@ class InspectionCategoryOut(BaseModel):
     code: str
     name: str
     items: list[InspectionItemOut]
+
+
+# --- 線上授權 -------------------------------------------------------------
+class OwnerAuthorizationIn(BaseModel):
+    owner_name: str = Field(..., min_length=1, max_length=50)
+    owner_email: EmailStr | None = Field(None, description="填寫後授權書 PDF 也會寄給屋主")
+    owner_id_number: str | None = Field(None, description="批次要求身分證驗證時必填")
+    trustee_name: str = Field(..., min_length=1, max_length=50)
+    trustee_email: EmailStr
+    owner_signature: str = Field(..., description="Base64 PNG，可含 data:image/png;base64, 開頭")
+
+
+class TrusteeSignIn(BaseModel):
+    trustee_signature: str = Field(..., description="Base64 PNG，可含 data:image/png;base64, 開頭")
+
+
+class OwnerLinkOut(BaseModel):
+    token: str
+    expires_at: datetime
+    public_url: str | None = Field(None, description="對外網址（外網可開啟）；未啟動通道時為 null")
+    lan_url: str = Field(..., description="區網網址，只有同網路或 Tailscale 能開啟")
+
+
+class BookingSummary(BaseModel):
+    project_name: str
+    unit_no: str
+    inspection_date: str
+    require_id_verification: bool
+
+
+class SignInviteInfo(BaseModel):
+    status: str
+    owner_name: str
+    trustee_name: str
+    trustee_email: str
+    project_name: str
+    unit_no: str
+    inspection_date: str
+    expires_at: datetime | None
+
+
+class AuthorizationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    booking_id: int
+    status: str
+    owner_name: str
+    owner_email: str | None
+    owner_signed_at: datetime | None
+    trustee_name: str | None
+    trustee_email: str
+    trustee_signed_at: datetime | None
+    invite_sent_at: datetime | None
+    invite_expires_at: datetime | None
+    has_pdf: bool
+    completed_at: datetime | None
