@@ -158,6 +158,46 @@ export type BatchSettings = {
   booking_close_at?: string | null;
 };
 
+export type InspectionStatus = 'not_started' | 'in_progress' | 'signed' | 'approved' | 'sent';
+export type ResultValue = 'pending' | 'pass' | 'fail' | 'na';
+
+export type ScheduleItem = {
+  booking_id: number;
+  project_id: number;
+  project_name: string;
+  unit_no: string;
+  place: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  contact_name: string;
+  contact_phone: string;
+  status: InspectionStatus;
+  checked: number;
+  total: number;
+  fail_count: number;
+};
+
+export type InspectionPhoto = { id: number; check_point_id: number | null; url: string; caption: string | null };
+export type InspectionPoint = { id: number; name: string; result: ResultValue; note: string | null; photos: InspectionPhoto[] };
+export type InspectionItem = { id: number; name: string; points: InspectionPoint[] };
+export type InspectionCategory = { id: number; name: string; items: InspectionItem[] };
+
+export type Inspection = Omit<ScheduleItem, 'project_id'> & {
+  general_note: string | null;
+  inspector_name: string | null;
+  signer_name: string | null;
+  signed_at: string | null;
+  signature_url: string | null;
+  approved_at: string | null;
+  approver_name: string | null;
+  sent_at: string | null;
+  sent_to: string | null;
+  default_email: string | null;
+  categories: InspectionCategory[];
+  general_photos: InspectionPhoto[];
+};
+
 export type CheckPoint = { id: number; name: string; is_active: boolean; sort_order: number };
 export type ChecklistItem = CheckPoint & { check_points: CheckPoint[] };
 export type ChecklistCategory = CheckPoint & { items: ChecklistItem[] };
@@ -203,7 +243,7 @@ export function errorFromResponse(status: number, data: unknown): ApiError {
 }
 
 type RequestInit = {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   adminKey?: string; // 系統層級操作（建立資料庫 / 第一位管理者）
   baseUrl?: string; // 連線設定畫面測試尚未儲存的位址時使用
@@ -331,6 +371,24 @@ export const api = {
   inviteLink: (batchId: number, unitId: number) =>
     request<InviteStatus>(`/batches/${batchId}/units/${unitId}/invite-link`, { method: 'POST' }),
   cancelBooking: (bookingId: number) => request<null>(`/bookings/${bookingId}/cancel`, { method: 'POST' }),
+
+  // 第三階段：驗屋
+  schedule: (day: string) => request<ScheduleItem[]>(`/inspections/schedule?day=${day}`),
+  inspection: (bookingId: number) => request<Inspection>(`/inspections/${bookingId}`),
+  setResult: (bookingId: number, pointId: number, body: { result?: ResultValue; note?: string | null }) =>
+    request<InspectionPoint>(`/inspections/${bookingId}/results/${pointId}`, { method: 'PUT', body }),
+  updateInspectionNote: (bookingId: number, general_note: string | null) =>
+    request<Inspection>(`/inspections/${bookingId}`, { method: 'PATCH', body: { general_note } }),
+  deletePhoto: (photoId: number) => request<null>(`/inspection-photos/${photoId}`, { method: 'DELETE' }),
+  signInspection: (bookingId: number, body: { signer_name: string; strokes: number[][][]; width: number; height: number }) =>
+    request<Inspection>(`/inspections/${bookingId}/sign`, { method: 'POST', body }),
+  reopenInspection: (bookingId: number) => request<Inspection>(`/inspections/${bookingId}/reopen`, { method: 'POST' }),
+  reportLink: (bookingId: number) =>
+    request<{ url: string; filename: string }>(`/inspections/${bookingId}/report-link`, { method: 'POST' }),
+  approveReport: (bookingId: number) => request<Inspection>(`/inspections/${bookingId}/approve`, { method: 'POST' }),
+  unapproveReport: (bookingId: number) => request<Inspection>(`/inspections/${bookingId}/unapprove`, { method: 'POST' }),
+  sendReport: (bookingId: number, to: string | null) =>
+    request<Inspection>(`/inspections/${bookingId}/send`, { method: 'POST', body: { to } }),
 
   // 檢查項目清單（每個建案一份）
   checklist: (projectId: number) => request<ChecklistCategory[]>(`/projects/${projectId}/checklist`),

@@ -42,7 +42,14 @@
         }
       ],
       "expo-font",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "驗屋時需要拍攝現場照片",
+          "photosPermission": "驗屋時需要從相簿選擇現場照片"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -144,3 +144,17 @@ def require_permission(code: str) -> Callable[..., User]:
         return user
 
     return dependency
+
+
+def require_any_permission(*codes: str) -> Callable[..., User]:
+    """具備其中任一權限即可"""
+    for code in codes:
+        if code not in PERMISSIONS:
+            raise ValueError(f"未知的權限代碼 {code}")
+
+    def dependency(user: User = Depends(get_current_user)) -> User:
+        if not set(codes) & user_permissions(user):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "沒有檢視此資料的權限")
+        return user
+
+    return dependency

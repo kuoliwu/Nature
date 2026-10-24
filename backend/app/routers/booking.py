@@ -51,6 +51,7 @@ from app.services.booking import (
     slot_started,
 )
 from app.services.links import public_base_url
+from app.services.slots import ACTIVE_STATUSES
 
 admin = APIRouter(tags=["預約邀請（管理）"])
 public = APIRouter(tags=["屋主預約（公開）"])
@@ -126,7 +127,7 @@ def list_invites(batch_id: int, request: Request, db: Session = Depends(get_db))
     invites = {i.unit_id: i for i in db.scalars(select(UnitInvite).where(UnitInvite.batch_id == batch.id))}
     bookings = {
         b.unit_id: b
-        for b in db.scalars(select(Booking).where(Booking.batch_id == batch.id, Booking.status == BookingStatus.BOOKED))
+        for b in db.scalars(select(Booking).where(Booking.batch_id == batch.id, Booking.status.in_(ACTIVE_STATUSES)))
     }
     rows = []
     for unit in db.scalars(select(Unit).where(Unit.project_id == batch.project_id).order_by(Unit.unit_no)):
@@ -189,7 +190,7 @@ def _current(booking: Booking | None) -> PublicCurrentBooking | None:
     return PublicCurrentBooking(
         slot_id=s.id, date=s.slot_date, start_time=s.start_time, end_time=s.end_time,
         contact_name=booking.contact_name, contact_phone=booking.contact_phone, contact_email=booking.contact_email,
-        can_change=not slot_started(s) and booking_window(s.batch) is None,
+        can_change=booking.status == BookingStatus.BOOKED and not slot_started(s) and booking_window(s.batch) is None,
     )
 
 
@@ -246,6 +247,8 @@ def cancel_booking(token: str, request: Request, tasks: BackgroundTasks, db: Ses
     booking = active_booking(db, invite.batch_id, invite.unit_id)
     if booking is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "目前沒有預約")
+    if booking.status == BookingStatus.COMPLETED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "已完成驗屋，無法取消")
     if slot_started(booking.slot):
         raise HTTPException(status.HTTP_409_CONFLICT, "預約時段已開始，無法取消，請聯絡管理單位")
     booking.status = BookingStatus.CANCELLED

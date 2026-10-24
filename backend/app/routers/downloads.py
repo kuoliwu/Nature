@@ -1,10 +1,15 @@
 """短效下載連結（不需登入 header，憑連結中的 token）。只掛在管理用的 8000，不經過對外通道。"""
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
-from app.models import Project
+from app.models import Booking, Inspection, InspectionPhoto, Project
 from app.routers.projects import units_export_response
 from app.services.auth import read_download_token
 
@@ -21,4 +26,27 @@ def download(token: str, db: Session = Depends(get_db)):
         if project is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "找不到建案")
         return units_export_response(db, project, payload["fmt"])
+    if payload.get("kind") == "photo":
+        photo = db.get(InspectionPhoto, payload["id"])
+        if photo is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "照片已刪除")
+        return FileResponse(settings.storage_dir / photo.file_path, media_type="image/jpeg")
+    if payload.get("kind") == "inspection_signature":
+        inspection = db.scalar(select(Inspection).where(Inspection.booking_id == payload["id"]))
+        if inspection is None or not inspection.signature_path:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "沒有簽名")
+        return FileResponse(settings.storage_dir / inspection.signature_path, media_type="image/png")
+    if payload.get("kind") == "inspection_report":
+        from app.routers.inspections import build_inspection_report, report_filename  # 避免循環匯入
+
+        booking = db.get(Booking, payload["id"])
+        if booking is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "找不到預約")
+        filename = report_filename(booking)
+        return Response(
+            build_inspection_report(db, booking),
+            media_type="application/pdf",
+            # inline：瀏覽器直接預覽，不強制下載
+            headers={"Content-Disposition": f"inline; filename=report.pdf; filename*=UTF-8''{quote(filename)}"},
+        )
     raise HTTPException(status.HTTP_404_NOT_FOUND, "連結無效")

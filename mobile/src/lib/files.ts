@@ -1,5 +1,7 @@
 /** 從手機選檔上傳（匯出則是用 api.unitsExportLink 取得短效連結，交給瀏覽器下載） */
 import * as DocumentPicker from 'expo-document-picker';
+import { File as FsFile, UploadType } from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 
 import { ApiError, apiState, errorFromResponse } from './api';
 
@@ -19,27 +21,67 @@ export async function pickSpreadsheet(): Promise<PickedFile | null> {
   return { uri: a.uri, name: a.name, mimeType: a.mimeType, file: a.file };
 }
 
-export async function uploadFile<T>(path: string, file: PickedFile): Promise<T> {
-  const { baseUrl, token } = apiState();
-  const form = new FormData();
-  if (file.file) {
-    form.append('file', file.file, file.name); // 網頁版
+/** 拍照或從相簿選一張照片；取消或沒有權限時回傳 null（沒有權限會丟出說明） */
+export async function pickImage(source: 'camera' | 'library'): Promise<PickedFile | null> {
+  const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.7 };
+  let result: ImagePicker.ImagePickerResult;
+  if (source === 'camera') {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) throw new ApiError('沒有相機權限，請到手機「設定」允許此 APP 使用相機');
+    result = await ImagePicker.launchCameraAsync(options);
   } else {
-    // React Native 的 FormData 接受 { uri, name, type } 物件代表本機檔案
-    form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? XLSX_MIME } as unknown as Blob);
+    result = await ImagePicker.launchImageLibraryAsync(options);
+  }
+  if (result.canceled || !result.assets?.length) return null;
+  const a = result.assets[0];
+  return { uri: a.uri, name: a.fileName ?? `photo-${Date.now()}.jpg`, mimeType: a.mimeType ?? 'image/jpeg', file: a.file };
+}
+
+/**
+ * 上傳檔案（multipart，欄位名稱 file）。
+ * 手機：Expo 的全域 fetch 是 expo/fetch，不支援 React Native 舊式的 { uri, name, type } 檔案物件，
+ *       所以改用 expo-file-system 的 File.upload。
+ * 網頁：用瀏覽器的 File 物件 + fetch。
+ */
+export async function uploadFile<T>(path: string, file: PickedFile, fields: Record<string, string> = {}): Promise<T> {
+  const { baseUrl, token } = apiState();
+  const url = `${baseUrl}${path}`;
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const mimeType = file.mimeType ?? XLSX_MIME;
+
+  let status: number;
+  let text: string;
+  try {
+    if (file.file) {
+      const form = new FormData();
+      for (const [key, value] of Object.entries(fields)) form.append(key, value);
+      form.append('file', file.file, file.name);
+      const res = await fetch(url, { method: 'POST', headers, body: form });
+      status = res.status;
+      text = await res.text();
+    } else {
+      const result = await new FsFile(file.uri).upload(url, {
+        httpMethod: 'POST',
+        uploadType: UploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType,
+        parameters: fields,
+        headers,
+        sessionType: 'foreground',
+      });
+      status = result.status;
+      text = result.body;
+    }
+  } catch (e) {
+    throw new ApiError(`上傳失敗：${e instanceof Error ? e.message : String(e)}`);
   }
 
-  let res: Response;
+  let data: unknown = null;
   try {
-    res = await fetch(`${baseUrl}${path}`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-  } catch (e) {
-    throw new ApiError(`無法連線到主機：${e instanceof Error ? e.message : String(e)}`);
+    data = JSON.parse(text);
+  } catch {
+    // 非 JSON 回應（例如 204）
   }
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw errorFromResponse(res.status, data);
+  if (status < 200 || status >= 300) throw errorFromResponse(status, data);
   return data as T;
 }

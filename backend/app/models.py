@@ -87,6 +87,13 @@ class CheckResult(str, enum.Enum):
     NA = "na"
 
 
+class InspectionStatus(str, enum.Enum):
+    IN_PROGRESS = "in_progress"  # 驗屋中
+    SIGNED = "signed"  # 屋主已簽名（檢查結果鎖定）
+    APPROVED = "approved"  # 管理者確認，可寄報告（M5）
+    SENT = "sent"  # 報告已寄出（M5）
+
+
 class AuthorizationStatus(str, enum.Enum):
     PENDING_OWNER = "pending_owner"  # 等待屋主簽名
     PENDING_TRUSTEE = "pending_trustee"  # 已寄邀請，等待受託人簽名
@@ -488,6 +495,52 @@ class InspectionResult(Base):
 
     booking: Mapped[Booking] = relationship(back_populates="results")
     check_point: Mapped[InspectionCheckPoint] = relationship()
+
+
+class Inspection(TimestampMixin, Base):
+    """第三階段：一筆預約一份驗屋紀錄（各檢查點的結果在 inspection_results）"""
+
+    __tablename__ = "inspections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), unique=True)
+    status: Mapped[InspectionStatus] = mapped_column(
+        enum_col(InspectionStatus), default=InspectionStatus.IN_PROGRESS
+    )
+    inspector_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    general_note: Mapped[str | None] = mapped_column(Text)  # 整體備註
+    started_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+    signer_name: Mapped[str | None] = mapped_column(String(50))  # 簽名的屋主 / 代理人
+    signature_path: Mapped[str | None] = mapped_column(String(500))
+    signed_at: Mapped[datetime | None]
+
+    # Review OK（管理者確認報告）與寄送
+    approved_at: Mapped[datetime | None]
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    sent_at: Mapped[datetime | None]
+    sent_to: Mapped[str | None] = mapped_column(String(255))
+    report_path: Mapped[str | None] = mapped_column(String(500))  # 最後一次寄出的報告 PDF
+
+    booking: Mapped[Booking] = relationship()
+    inspector: Mapped["User | None"] = relationship(foreign_keys=[inspector_id])
+    approver: Mapped["User | None"] = relationship(foreign_keys=[approved_by])
+
+
+class InspectionPhoto(Base):
+    """驗屋照片；check_point_id 為 NULL 代表整體照片"""
+
+    __tablename__ = "inspection_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), index=True)
+    check_point_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_check_points.id", ondelete="SET NULL"))
+    file_path: Mapped[str] = mapped_column(String(500))
+    width: Mapped[int]
+    height: Mapped[int]
+    caption: Mapped[str | None] = mapped_column(String(200))
+    taken_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
 
 # ---------------------------------------------------------------------------

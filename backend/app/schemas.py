@@ -498,3 +498,101 @@ class PublicBookIn(BaseModel):
 class PublicBookOut(BaseModel):
     message: str
     current: PublicCurrentBooking
+
+
+# --- 第三階段：驗屋 -------------------------------------------------------
+class ScheduleItem(BaseModel):
+    booking_id: int
+    project_id: int
+    project_name: str
+    unit_no: str
+    place: str
+    date: date
+    start_time: time
+    end_time: time
+    contact_name: str
+    contact_phone: str
+    status: str  # not_started / in_progress / signed / approved / sent
+    checked: int
+    total: int
+    fail_count: int
+
+
+class InspectionPhotoOut(BaseModel):
+    id: int
+    check_point_id: int | None
+    url: str  # 已含短效 token，可直接給 <Image> 顯示
+    caption: str | None
+
+
+class InspectionPointOut(BaseModel):
+    id: int
+    name: str
+    result: str  # pending / pass / fail / na
+    note: str | None
+    photos: list[InspectionPhotoOut]
+
+
+class InspectionItemOut(BaseModel):
+    id: int
+    name: str
+    points: list[InspectionPointOut]
+
+
+class InspectionCategoryBlock(BaseModel):
+    id: int
+    name: str
+    items: list[InspectionItemOut]
+
+
+class InspectionOut(BaseModel):
+    booking_id: int
+    project_name: str
+    unit_no: str
+    place: str
+    date: date
+    start_time: time
+    end_time: time
+    contact_name: str
+    contact_phone: str
+    status: str
+    general_note: str | None
+    inspector_name: str | None
+    signer_name: str | None
+    signed_at: datetime | None
+    signature_url: str | None
+    approved_at: datetime | None
+    approver_name: str | None
+    sent_at: datetime | None
+    sent_to: str | None
+    default_email: str | None  # 寄送報告預設的收件人（預約聯絡 Email，否則屋主 Email）
+    checked: int
+    total: int
+    fail_count: int
+    categories: list[InspectionCategoryBlock]
+    general_photos: list[InspectionPhotoOut]
+
+
+class ResultIn(BaseModel):
+    result: str | None = Field(None, pattern="^(pending|pass|fail|na)$")
+    note: str | None = Field(None, max_length=1000)
+
+
+class InspectionNoteIn(BaseModel):
+    general_note: str | None = Field(None, max_length=3000)
+
+
+class SignIn(BaseModel):
+    signer_name: str = Field(..., min_length=1, max_length=50)
+    strokes: list[list[tuple[float, float]]] = Field(..., min_length=1, max_length=500)
+    width: float = Field(..., gt=0, le=5000)
+    height: float = Field(..., gt=0, le=5000)
+
+
+class ReportSendIn(BaseModel):
+    to: EmailStr | None = Field(None, description="收件人；不填則用預約聯絡 Email")
+
+
+class ReportLinkOut(BaseModel):
+    url: str
+    filename: str

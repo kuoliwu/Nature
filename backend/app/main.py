@@ -7,10 +7,21 @@ from fastapi.responses import RedirectResponse
 from app import models  # noqa: F401  確保所有 Model 已註冊
 from app.config import settings
 from app.database import Base, add_missing_columns, engine, is_db_initialized
-from app.routers import auth, authorizations, batches, booking, checklist, downloads, projects, system, users
+from app.routers import (
+    auth,
+    authorizations,
+    batches,
+    booking,
+    checklist,
+    downloads,
+    inspections,
+    projects,
+    system,
+    users,
+)
 
 STORAGE_SUBDIRS = [
-    "signatures", "authorizations", "reports", "attachments", "form_uploads", "outbox", "templates",
+    "signatures", "authorizations", "reports", "attachments", "form_uploads", "outbox", "templates", "inspections",
 ]
 
 
@@ -50,5 +61,6 @@ app.include_router(checklist.router)
 app.include_router(downloads.router)
 app.include_router(booking.admin)
 app.include_router(booking.public)
+app.include_router(inspections.router)
 app.include_router(authorizations.public)
 app.include_router(authorizations.admin)

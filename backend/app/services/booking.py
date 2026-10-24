@@ -56,9 +56,10 @@ def available_days(db: Session, batch: BookingBatch) -> list[tuple[date, list[tu
 
 
 def active_booking(db: Session, batch_id: int, unit_id: int) -> Booking | None:
+    """有效的預約（含已完成驗屋的）"""
     return db.scalar(
         select(Booking).where(
-            Booking.batch_id == batch_id, Booking.unit_id == unit_id, Booking.status == BookingStatus.BOOKED
+            Booking.batch_id == batch_id, Booking.unit_id == unit_id, Booking.status.in_(ACTIVE_STATUSES)
         )
     )
 
@@ -88,6 +89,8 @@ def book(
         raise HTTPException(status.HTTP_409_CONFLICT, "這個時段已經開始或結束，請選擇其他時段")
 
     current = active_booking(db, batch.id, unit.id)
+    if current and current.status == BookingStatus.COMPLETED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "已完成驗屋，無法再更改預約")
     previous_slot = None
     if current and current.slot_id == slot.id:
         for key, value in contact.items():  # 同一時段只更新聯絡資料

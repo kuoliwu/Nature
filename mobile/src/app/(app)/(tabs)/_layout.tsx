@@ -17,6 +17,14 @@ export default function AppTabs() {
     <Tabs screenOptions={{ tabBarActiveTintColor: colors.primary, headerTitleAlign: 'center' }}>
       <Tabs.Screen name="index" options={{ title: '建案', tabBarIcon: icon('building') }} />
       <Tabs.Screen
+        name="inspections"
+        options={{
+          title: '驗屋',
+          tabBarIcon: icon('check-square-o'),
+          href: can('inspection.edit') || can('booking.view') ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
         name="users"
         options={{
           title: '人員',
