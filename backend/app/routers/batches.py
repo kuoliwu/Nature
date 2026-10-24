@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Booking, BookingBatch, ServiceType, TimeSlot
+from app.models import Booking, BookingBatch, ServiceType, TimeSlot, Unit
 from app.routers.projects import get_project_or_404
 from app.schemas import (
     BatchDatesIn,
@@ -53,6 +53,19 @@ def _breaks(body: BatchIn | BatchDatesIn) -> list[tuple]:
     return [(b.start, b.end) for b in body.breaks]
 
 
+def _booked_units(db: Session, batch_id: int) -> dict[int, list[str]]:
+    rows = db.execute(
+        select(Booking.slot_id, Unit.unit_no)
+        .join(Unit, Booking.unit_id == Unit.id)
+        .where(Booking.batch_id == batch_id, Booking.status.in_(ACTIVE_STATUSES))
+        .order_by(Unit.unit_no)
+    )
+    out: dict[int, list[str]] = defaultdict(list)
+    for slot_id, unit_no in rows:
+        out[slot_id].append(unit_no)
+    return out
+
+
 def _validate_range(start: date, end: date, day_start, day_end) -> list[date]:
     if end < start:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "結束日期不能早於開始日期")
@@ -83,6 +96,9 @@ def _batch_out(db: Session, batch: BookingBatch, with_days: bool = False) -> Bat
         slot_capacity=batch.slot_capacity,
         quota_mode=batch.quota_mode.value,
         is_active=batch.is_active,
+        description=batch.description,
+        booking_open_at=batch.booking_open_at,
+        booking_close_at=batch.booking_close_at,
         first_date=dates[0] if dates else None,
         last_date=dates[-1] if dates else None,
         day_count=len(dates),
@@ -93,12 +109,13 @@ def _batch_out(db: Session, batch: BookingBatch, with_days: bool = False) -> Bat
     if not with_days:
         return BatchOut(**data)
 
+    units = _booked_units(db, batch.id)
     by_day: dict[date, list[SlotOut]] = defaultdict(list)
     for s in slots:
         by_day[s.slot_date].append(
             SlotOut(
                 id=s.id, start_time=s.start_time, end_time=s.end_time,
-                capacity=s.capacity, booked=booked.get(s.id, 0), is_open=s.is_open,
+                capacity=s.capacity, booked=booked.get(s.id, 0), is_open=s.is_open, units=units.get(s.id, []),
             )
         )
     return BatchDetailOut(**data, days=[BatchDayOut(date=d, slots=by_day[d]) for d in dates])
@@ -184,7 +201,7 @@ def update_slot(slot_id: int, body: SlotUpdate, db: Session = Depends(get_db)):
     db.commit()
     return SlotOut(
         id=slot.id, start_time=slot.start_time, end_time=slot.end_time,
-        capacity=slot.capacity, booked=booked, is_open=slot.is_open,
+        capacity=slot.capacity, booked=booked, is_open=slot.is_open, units=_booked_units(db, slot.batch_id).get(slot.id, []),
     )
 
 

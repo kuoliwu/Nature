@@ -104,6 +104,7 @@ export type Slot = {
   capacity: number;
   booked: number;
   is_open: boolean;
+  units: string[]; // 已預約的戶別
 };
 
 export type Batch = {
@@ -120,10 +121,42 @@ export type Batch = {
   slot_count: number;
   open_slot_count: number;
   booked_count: number;
+  description: string | null;
+  booking_open_at: string | null;
+  booking_close_at: string | null;
 };
 
 export type BatchDay = { date: string; slots: Slot[] };
 export type BatchDetail = Batch & { days: BatchDay[] };
+
+export type InviteStatus = {
+  unit_id: number;
+  unit_no: string;
+  owner_name: string | null;
+  owner_email: string | null;
+  link: string | null;
+  sent_at: string | null;
+  send_count: number;
+  last_opened_at: string | null;
+  booking: {
+    id: number;
+    slot_id: number;
+    date: string;
+    start_time: string;
+    end_time: string;
+    contact_name: string;
+    contact_phone: string;
+    contact_email: string | null;
+  } | null;
+};
+
+export type InviteSendResult = { sent: string[]; no_email: string[]; already_sent: string[]; already_booked: string[] };
+
+export type BatchSettings = {
+  description?: string | null;
+  booking_open_at?: string | null; // YYYY-MM-DDTHH:MM:SS（本地時間）
+  booking_close_at?: string | null;
+};
 
 export type CheckPoint = { id: number; name: string; is_active: boolean; sort_order: number };
 export type ChecklistItem = CheckPoint & { check_points: CheckPoint[] };
@@ -288,6 +321,16 @@ export const api = {
     request<Slot>(`/slots/${id}`, { method: 'PATCH', body }),
   updateDay: (batchId: number, date: string, is_open: boolean) =>
     request<BatchDay>(`/batches/${batchId}/days/${date}`, { method: 'PATCH', body: { is_open } }),
+
+  // 第二階段：預約邀請
+  updateBatchSettings: (id: number, body: BatchSettings) =>
+    request<Batch>(`/batches/${id}/settings`, { method: 'PATCH', body }),
+  invites: (batchId: number) => request<InviteStatus[]>(`/batches/${batchId}/invites`),
+  sendInvites: (batchId: number, body: { unit_ids?: number[]; resend?: boolean }) =>
+    request<InviteSendResult>(`/batches/${batchId}/invites/send`, { method: 'POST', body }),
+  inviteLink: (batchId: number, unitId: number) =>
+    request<InviteStatus>(`/batches/${batchId}/units/${unitId}/invite-link`, { method: 'POST' }),
+  cancelBooking: (bookingId: number) => request<null>(`/bookings/${bookingId}/cancel`, { method: 'POST' }),
 
   // 檢查項目清單（每個建案一份）
   checklist: (projectId: number) => request<ChecklistCategory[]>(`/projects/${projectId}/checklist`),

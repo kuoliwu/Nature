@@ -543,6 +543,26 @@ class AccessLink(Base):
     booking: Mapped[Booking] = relationship()
 
 
+class UnitInvite(Base):
+    """第二階段：寄給各戶的預約邀請。一戶在同一個健檢日期設定只有一個連結，重寄沿用同一個。"""
+
+    __tablename__ = "unit_invites"
+    __table_args__ = (UniqueConstraint("batch_id", "unit_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("booking_batches.id", ondelete="CASCADE"), index=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), index=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+    sent_at: Mapped[datetime | None]  # 最後一次寄出
+    sent_to: Mapped[str | None] = mapped_column(String(255))
+    send_count: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    last_opened_at: Mapped[datetime | None]  # 屋主最後一次開啟
+
+    batch: Mapped[BookingBatch] = relationship()
+    unit: Mapped[Unit] = relationship()
+
+
 class LinkPurpose:
     OWNER_AUTHORIZATION = "owner_authorization"
 

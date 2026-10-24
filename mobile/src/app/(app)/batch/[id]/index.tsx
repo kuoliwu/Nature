@@ -3,7 +3,7 @@ import { useLayoutEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, PromptModal } from '@/components/overlays';
-import { Card, HeaderButton, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
+import { Card, HeaderButton, ListRow, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, BatchDetail, Slot } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { dayLabel, shortTime } from '@/lib/dates';
@@ -15,6 +15,7 @@ export default function BatchScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
   const { can } = useAuth();
   const editable = can('batch.manage');
+  const canSeeBookings = can('booking.view') || can('booking.manage');
   const navigation = useNavigation();
   const { data: batch, setData: setBatch, error, setError, reload, refresh, refreshing } = useLoad(() => api.batch(id), [id]);
   const [selected, setSelected] = useState<{ date: string; slotId: number } | null>(null);
@@ -87,6 +88,14 @@ export default function BatchScreen() {
           {editable && <Text style={localStyles.hint}>點時段可關閉 / 開放或調整名額；灰色為已關閉。</Text>}
         </Card>
         {error && <Message kind="error" text={error} />}
+        {canSeeBookings && (
+          <ListRow
+            title="📨 寄送邀請／預約名單"
+            subtitle="寄邀請信給住戶、查看誰預約了哪個時段"
+            right={`${batch.booked_count} 戶已預約`}
+            onPress={() => router.push({ pathname: '/batch/[id]/invites', params: { id: String(id) } })}
+          />
+        )}
 
         {batch.days.map((day) => {
           const openCount = day.slots.filter((s) => s.is_open).length;
@@ -132,7 +141,7 @@ export default function BatchScreen() {
             </Card>
           );
         })}
-        <View style={{ height: selectedSlot ? 140 : 20 }} />
+        <View style={{ height: selectedSlot ? 170 : 20 }} />
       </ScrollView>
 
       {selectedSlot && selected && (
@@ -144,6 +153,9 @@ export default function BatchScreen() {
             <Text style={localStyles.panelMeta}>
               已預約 {selectedSlot.booked} 組／名額 {selectedSlot.capacity} 組｜{selectedSlot.is_open ? '開放中' : '已關閉'}
             </Text>
+            {selectedSlot.units.length > 0 && (
+              <Text style={localStyles.panelMeta}>預約戶別：{selectedSlot.units.join('、')}</Text>
+            )}
             <View style={localStyles.panelButtons}>
               <PanelButton
                 label={selectedSlot.is_open ? '關閉時段' : '開放時段'}
@@ -166,6 +178,10 @@ export default function BatchScreen() {
         title={batch.name}
         onClose={() => setMenu(false)}
         options={[
+          {
+            label: '預約設定（說明、開放與截止時間）',
+            onPress: () => router.push({ pathname: '/batch/[id]/settings', params: { id: String(id) } }),
+          },
           {
             label: '追加日期',
             onPress: () =>

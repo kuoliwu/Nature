@@ -185,6 +185,7 @@ class SlotOut(BaseModel):
     capacity: int
     booked: int
     is_open: bool
+    units: list[str] = []  # 已預約的戶別
 
 
 class BatchDayOut(BaseModel):
@@ -197,6 +198,9 @@ class BatchOut(BaseModel):
     project_id: int
     name: str
     service_type: str
+    description: str | None = None
+    booking_open_at: datetime | None = None
+    booking_close_at: datetime | None = None
     slot_minutes: int
     slot_capacity: int
     quota_mode: str
@@ -402,3 +406,95 @@ class ChangePasswordIn(BaseModel):
 class PermissionOut(BaseModel):
     code: str
     label: str
+
+
+# --- 第二階段：預約邀請與屋主預約 ---------------------------------------
+class BatchSettingsIn(BaseModel):
+    description: str | None = Field(None, max_length=2000, description="預約說明，會顯示在邀請信與預約頁")
+    booking_open_at: datetime | None = Field(None, description="開放預約時間；空白代表立即開放")
+    booking_close_at: datetime | None = Field(None, description="預約截止時間；空白代表不限")
+
+
+class InviteSendIn(BaseModel):
+    unit_ids: list[int] | None = Field(None, description="指定要寄的戶；不傳代表全部住戶")
+    resend: bool = Field(False, description="True：已寄過的也再寄一次")
+
+
+class InviteSendOut(BaseModel):
+    sent: list[str]
+    no_email: list[str]  # 沒有屋主 Email，無法寄送
+    already_sent: list[str]  # 已寄過（resend=False 時略過）
+    already_booked: list[str]  # 已預約，不再寄
+
+
+class InviteBookingOut(BaseModel):
+    id: int
+    slot_id: int
+    date: date
+    start_time: time
+    end_time: time
+    contact_name: str
+    contact_phone: str
+    contact_email: str | None
+
+
+class InviteStatusOut(BaseModel):
+    unit_id: int
+    unit_no: str
+    owner_name: str | None
+    owner_email: str | None
+    link: str | None  # 已產生邀請時才有，可複製傳給屋主
+    sent_at: datetime | None
+    send_count: int
+    last_opened_at: datetime | None
+    booking: InviteBookingOut | None
+
+
+class PublicSlot(BaseModel):
+    id: int
+    start_time: time
+    end_time: time
+    remaining: int
+
+
+class PublicDay(BaseModel):
+    date: date
+    slots: list[PublicSlot]
+
+
+class PublicCurrentBooking(BaseModel):
+    slot_id: int
+    date: date
+    start_time: time
+    end_time: time
+    contact_name: str
+    contact_phone: str
+    contact_email: str | None
+    can_change: bool
+
+
+class PublicBookingInfo(BaseModel):
+    project_name: str
+    unit_no: str
+    place: str
+    batch_name: str
+    service_label: str
+    description: str | None
+    closed_reason: str | None  # 非 None 代表目前不能預約
+    close_at: datetime | None
+    defaults: dict  # 聯絡資料預設值（屋主姓名 / 電話 / Email）
+    current: PublicCurrentBooking | None
+    days: list[PublicDay]
+
+
+class PublicBookIn(BaseModel):
+    slot_id: int
+    contact_name: str = Field(..., min_length=1, max_length=50)
+    contact_phone: str = Field(..., min_length=6, max_length=20)
+    contact_email: EmailStr
+    note: str | None = Field(None, max_length=500)
+
+
+class PublicBookOut(BaseModel):
+    message: str
+    current: PublicCurrentBooking

@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from app.config import settings
 from app.main import lifespan
-from app.routers import authorizations
+from app.routers import authorizations, booking
 
 app = FastAPI(
     title=f"{settings.app_name}（公開頁面）",
@@ -20,6 +20,7 @@ app = FastAPI(
 )
 
 app.include_router(authorizations.public)
+app.include_router(booking.public)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)

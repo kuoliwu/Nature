@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>線上預約</title>
+<style>
+  :root { color-scheme: light; --primary: #1d4ed8; --border: #d1d5db; --muted: #6b7280; --danger: #b91c1c; --ok: #166534; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; background: #f3f4f6; color: #111827; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
+  h1 { font-size: 21px; margin: 8px 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card h2 { font-size: 16px; margin: 0 0 10px; }
+  .desc { white-space: pre-line; font-size: 15px; line-height: 1.6; }
+  .notice { border-radius: 12px; padding: 14px; margin-bottom: 12px; font-size: 15px; white-space: pre-line; }
+  .notice.ok { background: #f0fdf4; border: 1px solid #86efac; color: var(--ok); }
+  .notice.err { background: #fef2f2; border: 1px solid #fca5a5; color: var(--danger); }
+  .notice.info { background: #eff6ff; border: 1px solid #93c5fd; color: #1e40af; }
+  .current { font-size: 18px; font-weight: 700; margin: 4px 0 12px; }
+  .days { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+  .day { flex: 0 0 auto; border: 1px solid var(--border); background: #fff; border-radius: 10px; padding: 8px 12px; text-align: center; min-width: 76px; cursor: pointer; }
+  .day b { display: block; font-size: 16px; }
+  .day small { color: var(--muted); font-size: 12px; }
+  .day.on { border-color: var(--primary); background: var(--primary); color: #fff; }
+  .day.on small { color: #dbeafe; }
+  .day.full { opacity: 0.45; }
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 12px; }
+  .slot { border: 1px solid #93c5fd; background: #eff6ff; border-radius: 10px; padding: 10px 4px; text-align: center; cursor: pointer; font-size: 16px; font-weight: 600; color: #111827; }
+  .slot small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .slot.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .slot.on small { color: #dbeafe; }
+  .slot:disabled { background: #f3f4f6; border-color: var(--border); color: #9ca3af; cursor: not-allowed; }
+  .slot.mine { outline: 2px dashed #16a34a; outline-offset: 2px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 12px 0 6px; }
+  label .opt { font-weight: 400; color: var(--muted); }
+  input, textarea { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; }
+  .btn { width: 100%; padding: 14px; font-size: 17px; font-weight: 600; color: #fff; background: var(--primary); border: none; border-radius: 10px; margin-top: 14px; cursor: pointer; }
+  .btn:disabled { opacity: 0.5; }
+  .btn.ghost { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+  .btn.danger { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
+  .row { display: flex; gap: 8px; }
+  .row .btn { margin-top: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div id="loading" class="card">載入中…</div>
+  <div id="fatal" class="notice err" hidden></div>
+
+  <div id="app" hidden>
+    <h1 id="title"></h1>
+    <div class="sub" id="subtitle"></div>
+    <div id="msg" class="notice" hidden></div>
+
+    <section class="card" id="desc-card" hidden><div class="desc" id="desc"></div></section>
+
+    <section class="card" id="current-card" hidden>
+      <h2>您目前的預約</h2>
+      <div class="current" id="current-text"></div>
+      <div class="row" id="current-actions">
+        <button class="btn ghost" id="change-btn" type="button">改期</button>
+        <button class="btn danger" id="cancel-btn" type="button">取消預約</button>
+      </div>
+    </section>
+
+    <div id="closed" class="notice info" hidden></div>
+
+    <form id="form" hidden novalidate>
+      <section class="card">
+        <h2 id="pick-title">選擇日期與時段</h2>
+        <div class="days" id="days"></div>
+        <div class="slots" id="slots"></div>
+        <p class="muted" id="no-slots" hidden>目前沒有可預約的時段</p>
+      </section>
+
+      <section class="card">
+        <h2>聯絡資料</h2>
+        <label for="contact_name">姓名</label>
+        <input id="contact_name" autocomplete="name">
+        <label for="contact_phone">手機</label>
+        <input id="contact_phone" type="tel" autocomplete="tel">
+        <label for="contact_email">Email <span class="opt">（寄送預約確認信）</span></label>
+        <input id="contact_email" type="email" autocomplete="email">
+        <label for="note">備註 <span class="opt">（選填）</span></label>
+        <textarea id="note" rows="2"></textarea>
+        <button class="btn" id="submit" type="submit" disabled>請先選擇時段</button>
+        <button class="btn ghost" id="back-btn" type="button" hidden>不改了</button>
+      </section>
+    </form>
+  </div>
+</main>
+
+<script>
+const CONFIG = __CONFIG__;
+const $ = (id) => document.getElementById(id);
+const API = `/api/public/book/${encodeURIComponent(CONFIG.token)}`;
+const WEEK = '日一二三四五六';
+let info = null, selectedDay = null, selectedSlot = null;
+
+const hhmm = (t) => t.slice(0, 5);
+const dayText = (d) => { const x = new Date(d + 'T00:00:00'); return `${x.getMonth() + 1}/${x.getDate()}（${WEEK[x.getDay()]}）`; };
+
+async function api(path, options = {}) {
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const data = res.status === 204 ? null : await res.json().catch(() => null);
+  if (!res.ok) {
+    const d = data && data.detail;
+    throw new Error(typeof d === 'string' ? d : Array.isArray(d) ? d.map((x) => x.msg).join('\n') : `伺服器錯誤 (${res.status})`);
+  }
+  return data;
+}
+
+function showMsg(kind, text) {
+  const el = $('msg');
+  el.className = `notice ${kind}`;
+  el.textContent = text;
+  el.hidden = !text;
+  if (text) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function renderDays() {
+  const days = $('days');
+  days.innerHTML = '';
+  for (const day of info.days) {
+    const left = day.slots.reduce((n, s) => n + s.remaining, 0);
+    const el = document.createElement('div');
+    el.className = 'day' + (day.date === selectedDay ? ' on' : '') + (left === 0 ? ' full' : '');
+    el.innerHTML = `<b></b><small></small>`;
+    el.querySelector('b').textContent = dayText(day.date);
+    el.querySelector('small').textContent = left === 0 ? '已額滿' : `可預約 ${left} 組`;
+    el.onclick = () => { selectedDay = day.date; selectedSlot = null; render(); };
+    days.append(el);
+  }
+  $('no-slots').hidden = info.days.length > 0;
+}
+
+function renderSlots() {
+  const box = $('slots');
+  box.innerHTML = '';
+  const day = info.days.find((d) => d.date === selectedDay);
+  if (!day) return;
+  for (const s of day.slots) {
+    const mine = info.current && info.current.slot_id === s.id;
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'slot' + (s.id === selectedSlot ? ' on' : '') + (mine ? ' mine' : '');
+    el.disabled = s.remaining === 0 && !mine;
+    el.innerHTML = `<span></span><small></small>`;
+    el.querySelector('span').textContent = hhmm(s.start_time);
+    el.querySelector('small').textContent = mine ? '目前預約' : s.remaining === 0 ? '額滿' : `剩 ${s.remaining} 組`;
+    el.onclick = () => { selectedSlot = s.id; render(); };
+    box.append(el);
+  }
+}
+
+function render() {
+  renderDays();
+  renderSlots();
+  const btn = $('submit');
+  btn.disabled = !selectedSlot;
+  btn.textContent = !selectedSlot ? '請先選擇時段' : info.current ? '確認改期' : '確認預約';
+}
+
+function showForm(changing) {
+  $('form').hidden = false;
+  $('back-btn').hidden = !changing;
+  $('pick-title').textContent = changing ? '選擇新的日期與時段' : '選擇日期與時段';
+  if (!selectedDay) selectedDay = (info.current && info.days.some((d) => d.date === info.current.date) ? info.current.date : null)
+    || (info.days.find((d) => d.slots.some((s) => s.remaining > 0)) || info.days[0] || {}).date || null;
+  render();
+}
+
+function renderAll() {
+  $('title').textContent = `${info.project_name} ${info.unit_no}`;
+  $('subtitle').textContent = `${info.service_label}預約・${info.batch_name}${info.place ? '・' + info.place : ''}`;
+  document.title = `${info.service_label}預約 - ${info.project_name}`;
+  $('desc-card').hidden = !info.description;
+  $('desc').textContent = info.description || '';
+
+  const c = info.current;
+  $('current-card').hidden = !c;
+  if (c) {
+    $('current-text').textContent = `${dayText(c.date)} ${hhmm(c.start_time)}–${hhmm(c.end_time)}`;
+    $('current-actions').hidden = !c.can_change;
+  }
+
+  const closed = info.closed_reason;
+  const deadline = info.close_at ? `預約截止：${info.close_at.slice(0, 16).replace('T', ' ')}` : '';
+  $('closed').hidden = !closed && !deadline;
+  $('closed').textContent = closed || deadline;
+
+  for (const k of ['contact_name', 'contact_phone', 'contact_email']) {
+    $(k).value = (c && c[k]) || info.defaults[k] || '';
+  }
+  $('form').hidden = true;
+  if (!closed && !c) showForm(false);
+}
+
+async function load() {
+  info = await api(API);
+  selectedSlot = null;
+  selectedDay = null;
+  renderAll();
+}
+
+$('change-btn').onclick = () => { showMsg('', ''); showForm(true); $('form').scrollIntoView({ behavior: 'smooth' }); };
+$('back-btn').onclick = () => { $('form').hidden = true; };
+$('cancel-btn').onclick = async () => {
+  if (!confirm('確定要取消這個預約嗎？')) return;
+  try {
+    await api(`${API}/cancel`, { method: 'POST' });
+    await load();
+    showMsg('ok', '預約已取消，取消通知已寄到您的信箱。如需重新預約，請直接選擇時段。');
+  } catch (e) { showMsg('err', e.message); }
+};
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const val = (id) => $(id).value.trim();
+  if (!val('contact_name') || !val('contact_phone') || !val('contact_email')) return showMsg('err', '請填寫姓名、手機與 Email');
+  const btn = $('submit');
+  btn.disabled = true;
+  btn.textContent = '送出中…';
+  try {
+    const r = await api(API, {
+      method: 'POST',
+      body: JSON.stringify({
+        slot_id: selectedSlot, contact_name: val('contact_name'), contact_phone: val('contact_phone'),
+        contact_email: val('contact_email'), note: val('note') || null,
+      }),
+    });
+    await load();
+    showMsg('ok', r.message);
+  } catch (err) {
+    showMsg('err', err.message);
+    try { const keep = selectedDay; await load(); showForm(!!info.current); selectedDay = keep; render(); } catch (_) {}
+  }
+});
+
+load()
+  .then(() => { $('loading').hidden = true; $('app').hidden = false; })
+  .catch((e) => { $('loading').hidden = true; $('fatal').hidden = false; $('fatal').textContent = e.message; });
+</script>
+</body>
+</html>
