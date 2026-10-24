@@ -49,6 +49,7 @@ cd ~/stock/nature/nature/backend && source .venv/bin/activate && python run.py -
 | 後端測試 | `cd backend && source .venv/bin/activate && pytest -q` |
 | 建立示範預約（測簽名流程） | `cd backend && source .venv/bin/activate && python -m scripts.create_demo_booking` |
 | 產生屋主連結 | `cd backend && source .venv/bin/activate && python -m scripts.owner_link <預約編號>` |
+| 重設管理者密碼（忘記密碼時） | `cd backend && source .venv/bin/activate && python -m scripts.reset_admin <手機號碼>` |
 | 查看測試信件（未設定 SMTP 時） | `cd backend && source .venv/bin/activate && python -m scripts.show_outbox` |
 | APP 測試 / 型別檢查 | `cd mobile && npm test && npm run typecheck` |
 | 查 Tailscale IP | WSL：`ip -4 addr \| grep 'inet 100\.'`　Windows：`tailscale ip -4` |
@@ -241,13 +242,41 @@ npm run 5g       # 手機走 5G / 4G（需開 Tailscale）時
 
 ### APP 操作流程
 
-1. 「主機位址」輸入 `run.py` 印出的位址：Wi-Fi 填 `192.168.68.109:8000`，5G 填 `100.76.33.111:8000`（可以省略 `http://`）。
-2. 「管理金鑰」輸入 `backend/.env` 裡的 `ADMIN_INIT_KEY`。
-3. 按「**連線測試**」，顯示綠色「連線成功」即可。
-4. 第一次使用時按「**初始化資料庫**」，會建立所有資料表並寫入預設檢查項目。重複按也安全，不會清掉資料。
-5. 按「**資料庫狀態**」可以查看各資料表的筆數。
+**第一次使用（只需一次）**
 
-設定會儲存在手機上，下次開啟 APP 會自動帶入。
+1. 開啟 APP 會看到「登入」畫面，點「**變更主機設定**」。
+2. 「主機位址」輸入 `run.py` 印出的位址：Wi-Fi 填 `192.168.68.109:8000`，5G 填 `100.76.33.111:8000`（可以省略 `http://`）。
+3. 「管理金鑰」輸入 `backend/.env` 裡的 `ADMIN_INIT_KEY`。
+4. 按「**連線測試**」，顯示「連線成功」即可；資料庫還沒建立時再按「**初始化資料庫**」（重複按也安全，不會清掉資料）。
+5. 回到登入畫面，點「**建立第一位管理者 →**」，輸入姓名、手機號碼、密碼。建立後會自動登入，這個帳號是**最高管理者**。
+
+**之後每次使用**
+
+- 用手機號碼 + 密碼登入。登入狀態會保留 30 天。
+- 下方分頁：
+  - **建案**：建案列表。
+  - **人員**：只有具「人員與權限管理」權限的人看得到；可以新增人員、設定權限、重設密碼、停用帳號。
+  - **我的帳號**：修改密碼、主機設定、登出。
+
+**權限說明**
+
+| 權限 | 可以做什麼 |
+|---|---|
+| 建案 / 戶別管理 | 新增、修改建案與住戶資料 |
+| 預約批次與頁面設定 | 設定健檢日期、時段、名額 |
+| 檢視預約時間表 | 查看預約與授權書 |
+| 新增 / 修改 / 取消預約 | 管理預約、產生屋主連結 |
+| 填寫檢查結果 | 驗屋時填寫檢查項目、拍照 |
+| 管理驗屋報告 | 確認並寄出報告 |
+| 人員與權限管理 | 新增人員與設定權限 |
+
+沒有任何權限的人員登入後仍可以**查看**建案資料。最高管理者擁有全部權限。
+
+**忘記密碼**：請最高管理者在「人員」分頁重設；如果最高管理者自己忘記，在電腦上執行：
+
+```bash
+cd ~/stock/nature/nature/backend && source .venv/bin/activate && python -m scripts.reset_admin 0912345678
+```
 
 ---
 
@@ -443,6 +472,8 @@ https://xxxx.trycloudflare.com/authorize/5Mc5JW8Wvm0w7iB88GzhKNim697hF71M
 | `run.py` 印出 `172.x.x.x` | mirrored 模式沒有生效：檢查 `.wslconfig` 檔名與內容，並執行 `wsl --shutdown` |
 | 電腦瀏覽器打得開 `/docs`，但手機連不到 | ① 防火牆兩道規則都要建立（第 3 節）② 手機和電腦要在同一個 Wi-Fi ③ 網路設定檔要是「私人網路」 |
 | 手機 5G 連不到 | 正常現象，見第 6 節 |
+| `npm` 出現 `ENOTEMPTY`、錯誤訊息裡有 `\\wsl.localhost\...` 或 `C:\Users\...` | 執行到 **Windows 版** npm 了。輸入 `which npm`：如果是 `/mnt/c/...`，執行 `source ~/.nvm/nvm.sh` 後再試。常見原因：`~/.bashrc` 裡 venv 的 `activate` 寫在 nvm **之前**，之後再啟動其他 venv 時 PATH 會被還原成沒有 nvm 的版本；把 `activate` 那行移到 nvm 設定之後即可（本機已修正）。`node_modules` 若已損壞：`rm -rf node_modules && npm ci` |
+| APP 一直跳回登入畫面 | 密碼被重設、帳號被停用，或登入超過 30 天：重新登入即可 |
 | APP 顯示「金鑰錯誤 (403)」 | APP 的管理金鑰和 `backend/.env` 的 `ADMIN_INIT_KEY` 不一致；改了 `.env` 要重新啟動 `run.py` |
 | APP 顯示「連線逾時」 | 後端沒有在執行，或 IP 已經改變，請重新看 `run.py` 印出的位址 |
 | 授權書 PDF 中文變成方塊或空白 | 找不到繁中字型：把 `.ttf` 放到 `backend/fonts/`，或在 `.env` 設定 `PDF_FONT_PATH` |

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     storage_dir: Path = BASE_DIR / "storage"
 
     admin_init_key: str = "change-me"
+
+    # 管理者登入；JWT_SECRET 留空時自動產生並存在 data/.jwt_secret
+    jwt_secret: str = ""
+    jwt_secret_file: Path = BASE_DIR / "data" / ".jwt_secret"
+    token_expire_days: int = 30
     id_hash_salt: str = "change-me-too"
 
     # 業務規則預設值

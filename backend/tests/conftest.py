@@ -18,10 +18,23 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 
+# 系統金鑰；admin_token fixture 執行後會再加上管理者的 Authorization header
 ADMIN = {"X-Admin-Key": "test-key"}
+ADMIN_LOGIN = {"phone": "0900000000", "password": "admin-pass-123"}
 
 
 @pytest.fixture(scope="session")
 def client():
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(scope="session")
+def admin_token(client) -> str:
+    """建立資料庫與第一位最高管理者，並讓 ADMIN header 帶上登入憑證"""
+    client.post("/init-db", headers=ADMIN)
+    r = client.post("/auth/setup", headers=ADMIN, json={"name": "測試管理者", **ADMIN_LOGIN})
+    assert r.status_code == 201, r.text
+    token = r.json()["access_token"]
+    ADMIN["Authorization"] = f"Bearer {token}"
+    return token

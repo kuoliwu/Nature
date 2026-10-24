@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "驗屋預約管理",
-    "slug": "inspection-admin",
+    "slug": "servicehopo",
     "scheme": "inspectionadmin",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -40,10 +40,17 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "owner": "service.hopo",
+    "extra": {
+      "eas": {
+        "projectId": "99895a26-beb0-4dbc-937a-7edd6a27639a"
+      }
     }
   }
 }

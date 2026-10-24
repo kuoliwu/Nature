@@ -37,11 +37,14 @@ from app.services.pdf import (
     generate_authorization_pdf,
     save_authorization_pdf,
 )
-from app.services.security import hash_id_number, require_admin_key
+from app.services.auth import require_permission
+from app.services.security import hash_id_number
 from app.services.signature import SignatureError, decode_signature, save_signature
 
 public = APIRouter(tags=["線上授權（公開）"])
-admin = APIRouter(tags=["線上授權（管理）"], dependencies=[Depends(require_admin_key)])
+admin = APIRouter(tags=["線上授權（管理）"])
+can_view = [Depends(require_permission("booking.view"))]
+can_manage = [Depends(require_permission("booking.manage"))]
 
 SIGN_PAGE = (Path(__file__).resolve().parent.parent / "templates" / "sign.html").read_text("utf-8")
 OPEN_STATUSES = (AuthorizationStatus.PENDING_TRUSTEE, AuthorizationStatus.COMPLETED)
@@ -284,7 +287,7 @@ def trustee_sign(token: str, body: TrusteeSignIn, tasks: BackgroundTasks, db: Se
 # ---------------------------------------------------------------------------
 # 管理端
 # ---------------------------------------------------------------------------
-@admin.post("/bookings/{booking_id}/authorization-link", response_model=OwnerLinkOut)
+@admin.post("/bookings/{booking_id}/authorization-link", response_model=OwnerLinkOut, dependencies=can_manage)
 def create_owner_link(booking_id: int, request: Request, db: Session = Depends(get_db)):
     """產生（或沿用）屋主授權頁連結。public_url 只有在設定對外網址或啟動通道時才會有值。"""
     booking = db.get(Booking, booking_id)
@@ -301,7 +304,7 @@ def create_owner_link(booking_id: int, request: Request, db: Session = Depends(g
     )
 
 
-@admin.get("/authorizations", response_model=list[AuthorizationOut])
+@admin.get("/authorizations", response_model=list[AuthorizationOut], dependencies=can_view)
 def list_authorizations(
     booking_id: int | None = None,
     status_: AuthorizationStatus | None = Query(None, alias="status"),
@@ -322,7 +325,7 @@ def _get_auth(db: Session, authorization_id: int) -> Authorization:
     return auth
 
 
-@admin.get("/authorizations/{authorization_id}/pdf", response_class=FileResponse)
+@admin.get("/authorizations/{authorization_id}/pdf", response_class=FileResponse, dependencies=can_view)
 def download_pdf(authorization_id: int, db: Session = Depends(get_db)):
     auth = _get_auth(db, authorization_id)
     if not auth.pdf_path:
@@ -331,7 +334,7 @@ def download_pdf(authorization_id: int, db: Session = Depends(get_db)):
     return FileResponse(path, media_type="application/pdf", filename=path.name)
 
 
-@admin.post("/authorizations/{authorization_id}/resend-invite", response_model=AuthorizationOut)
+@admin.post("/authorizations/{authorization_id}/resend-invite", response_model=AuthorizationOut, dependencies=can_manage)
 def resend_invite(
     authorization_id: int, request: Request, tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
@@ -346,7 +349,7 @@ def resend_invite(
     return auth
 
 
-@admin.post("/authorizations/{authorization_id}/cancel", response_model=AuthorizationOut)
+@admin.post("/authorizations/{authorization_id}/cancel", response_model=AuthorizationOut, dependencies=can_manage)
 def cancel_authorization(authorization_id: int, db: Session = Depends(get_db)):
     auth = _get_auth(db, authorization_id)
     if auth.status == AuthorizationStatus.COMPLETED:

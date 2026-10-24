@@ -7,6 +7,7 @@ class HealthOut(BaseModel):
     status: str
     app: str
     db_initialized: bool
+    needs_setup: bool  # 資料庫已建立但還沒有任何管理者帳號
     server_time: datetime
 
 
@@ -151,3 +152,64 @@ class AuthorizationOut(BaseModel):
     invite_expires_at: datetime | None
     has_pdf: bool
     completed_at: datetime | None
+
+
+# --- 登入與人員 -----------------------------------------------------------
+PhoneStr = Field(..., min_length=8, max_length=20, description="手機號碼，登入帳號")
+PasswordStr = Field(..., min_length=8, max_length=72, description="至少 8 碼")
+
+
+class SetupIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    phone: str = PhoneStr
+    password: str = PasswordStr
+
+
+class LoginIn(BaseModel):
+    phone: str
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    phone: str
+    role: str
+    is_active: bool
+    permissions: list[str]
+    created_at: datetime
+
+
+class LoginOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: datetime
+    user: UserOut
+
+
+class UserCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    phone: str = PhoneStr
+    password: str = PasswordStr
+    role: str = Field("staff", pattern="^(staff|super_admin)$")
+    permissions: list[str] = []
+
+
+class UserUpdateIn(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=50)
+    phone: str | None = Field(None, min_length=8, max_length=20)
+    role: str | None = Field(None, pattern="^(staff|super_admin)$")
+    is_active: bool | None = None
+    permissions: list[str] | None = None
+    password: str | None = Field(None, min_length=8, max_length=72, description="填寫時重設密碼")
+
+
+class ChangePasswordIn(BaseModel):
+    old_password: str
+    new_password: str = PasswordStr
+
+
+class PermissionOut(BaseModel):
+    code: str
+    label: str

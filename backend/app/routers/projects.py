@@ -6,9 +6,12 @@ from sqlalchemy.orm import Session, selectinload
 from app.database import get_db
 from app.models import InspectionCategory, InspectionItem, Project, Unit
 from app.schemas import InspectionCategoryOut, ProjectIn, ProjectOut, UnitIn, UnitOut
-from app.services.security import hash_id_number, require_admin_key
+from app.services.auth import get_current_user, require_permission
+from app.services.security import hash_id_number
 
-router = APIRouter(dependencies=[Depends(require_admin_key)])
+# 登入即可讀取；新增 / 修改需要「建案 / 戶別管理」權限
+router = APIRouter(dependencies=[Depends(get_current_user)])
+manage = [Depends(require_permission("project.manage"))]
 
 
 def _get_project(db: Session, project_id: int) -> Project:
@@ -18,7 +21,7 @@ def _get_project(db: Session, project_id: int) -> Project:
     return project
 
 
-@router.post("/projects", response_model=ProjectOut, status_code=201, tags=["建案"])
+@router.post("/projects", response_model=ProjectOut, status_code=201, tags=["建案"], dependencies=manage)
 def create_project(body: ProjectIn, db: Session = Depends(get_db)):
     project = Project(**body.model_dump())
     db.add(project)
@@ -36,7 +39,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     return _get_project(db, project_id)
 
 
-@router.post("/projects/{project_id}/units", response_model=UnitOut, status_code=201, tags=["戶別"])
+@router.post("/projects/{project_id}/units", response_model=UnitOut, status_code=201, tags=["戶別"], dependencies=manage)
 def create_unit(project_id: int, body: UnitIn, db: Session = Depends(get_db)):
     _get_project(db, project_id)
     data = body.model_dump(exclude={"owner_id_number"})

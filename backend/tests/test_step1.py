@@ -54,14 +54,14 @@ def test_reset_requires_confirm(client):
     assert r.status_code == 400
 
 
-def test_checklist_tree(client):
+def test_checklist_tree(client, admin_token):
     data = client.get("/inspection/checklist", headers=ADMIN).json()
     tree = {c["name"]: {i["name"]: [p["name"] for p in i["check_points"]] for i in c["items"]} for c in data}
     assert tree["窗類"]["工作陽台門"] == ["膠條", "密合度", "五金"]
     assert tree["水電類"]["排水"] == ["浴室", "陽台", "廚房"]
 
 
-def test_project_and_unit(client):
+def test_project_and_unit(client, admin_token):
     project = client.post(
         "/projects",
         headers=ADMIN,

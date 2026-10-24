@@ -6,6 +6,7 @@ from sqlalchemy import func, inspect, select
 from app import models  # noqa: F401  確保所有 Model 已註冊到 Base.metadata
 from app.config import settings
 from app.database import Base, SessionLocal, engine, is_db_initialized
+from app.models import User
 from app.schemas import DBStatusOut, HealthOut, InitDBIn, InitDBOut, TableCount
 from app.seed import seed_inspection_checklist
 from app.services.security import require_admin_key
@@ -15,10 +16,16 @@ router = APIRouter(tags=["系統"])
 
 @router.get("/health", response_model=HealthOut, summary="連線測試（不需金鑰）")
 def health():
+    initialized = is_db_initialized()
+    needs_setup = False
+    if initialized:
+        with SessionLocal() as db:
+            needs_setup = not db.scalar(select(func.count(User.id)))
     return HealthOut(
         status="ok",
         app=settings.app_name,
-        db_initialized=is_db_initialized(),
+        db_initialized=initialized,
+        needs_setup=needs_setup,
         server_time=datetime.now(),
     )
 

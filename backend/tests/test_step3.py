@@ -66,8 +66,8 @@ def owner_payload(**overrides) -> dict:
 
 
 @pytest.fixture(autouse=True)
-def _db(client):
-    client.post("/init-db", headers=ADMIN)
+def _db(client, admin_token):
+    pass
 
 
 def owner_link(client, booking_id: int) -> dict:

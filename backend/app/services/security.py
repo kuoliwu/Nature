@@ -13,6 +13,6 @@ def hash_id_number(id_number: str) -> str:
 
 
 def require_admin_key(x_admin_key: str = Header(..., description="與 .env 的 ADMIN_INIT_KEY 相同")):
-    """暫時的管理端驗證；步驟後段改為手機號碼登入 + JWT 後再替換"""
+    """系統層級操作（建立資料庫、建立第一位管理者）用的金鑰；一般管理功能改用登入（services/auth.py）"""
     if not secrets.compare_digest(x_admin_key, settings.admin_init_key):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "X-Admin-Key 錯誤")
