@@ -33,6 +33,14 @@ export function normalizeBaseUrl(input: string): string | null {
  * 用 Expo Go 開發時，APP 是從電腦的開發伺服器（例如 192.168.68.109:8081）載入的，
  * 後端通常在同一台電腦的 8000，所以可以直接建議「同一個 IP + 8000」。正式安裝版沒有此資訊，回傳 null。
  */
+/**
+ * 網頁版：後端通常和網頁在同一台電腦，用網頁本身的主機名稱（例如 localhost）+ 8000。
+ * WSL mirrored 模式下，Windows 用自己的區網 IP 連 WSL 會逾時，所以電腦上一定要用 localhost。
+ */
+export function suggestHostForWeb(pageHostname: string | null | undefined): string | null {
+  return pageHostname ? `${pageHostname}:${DEFAULT_PORT}` : null;
+}
+
 export function suggestHostFromDevServer(hostUri: string | null | undefined): string | null {
   const ip = hostUri?.split(':')[0];
   return ip && /^[\d.]+$/.test(ip) ? `${ip}:${DEFAULT_PORT}` : null;

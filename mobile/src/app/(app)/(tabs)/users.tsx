@@ -38,6 +38,7 @@ export default function UsersScreen() {
 
   return (
     <FlatList
+      contentInsetAdjustmentBehavior="automatic" // iOS 半透明標題列時避免內容被擋住
       style={localStyles.list}
       contentContainerStyle={localStyles.content}
       data={users ?? []}

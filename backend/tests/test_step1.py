@@ -39,7 +39,7 @@ def test_init_db_creates_schema_and_seeds(client):
     body = r.json()
     assert body["was_initialized"] is False
     assert REQUIRED_TABLES <= set(body["tables"])
-    assert body["seeded"] == {"categories": 2, "items": 5, "check_points": 15}
+    assert body["seeded"] == {"categories": 3, "items": 7, "check_points": 19}
     assert client.get("/health").json()["db_initialized"] is True
 
 
@@ -57,8 +57,10 @@ def test_reset_requires_confirm(client):
 def test_checklist_tree(client, admin_token):
     data = client.get("/inspection/checklist", headers=ADMIN).json()
     tree = {c["name"]: {i["name"]: [p["name"] for p in i["check_points"]] for i in c["items"]} for c in data}
-    assert tree["窗類"]["工作陽台門"] == ["膠條", "密合度", "五金"]
-    assert tree["水電類"]["排水"] == ["浴室", "陽台", "廚房"]
+    assert list(tree["窗戶"]) == ["陽台窗", "房間窗", "工作陽台門", "其他"]
+    assert tree["窗戶"]["工作陽台門"] == ["膠條", "密合度", "五金"]
+    assert tree["水電"]["排水"] == ["浴室", "陽台", "廚房"]
+    assert tree["其他"] == {"其他": ["狀況說明"]}
 
 
 def test_project_and_unit(client, admin_token):

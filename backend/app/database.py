@@ -43,3 +43,37 @@ def get_db() -> Generator[Session, None, None]:
 
 def is_db_initialized() -> bool:
     return inspect(engine).has_table("projects")
+
+
+def add_missing_columns() -> list[str]:
+    """
+    輕量的資料庫升級：Model 新增欄位時，對既有資料表執行 ALTER TABLE ADD COLUMN，
+    已有的資料都會保留。新增的欄位必須可為 NULL，或在 Model 上設定 server_default。
+    回傳新增的欄位清單（「表.欄位」）。
+    """
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    added: list[str] = []
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue  # 整張表不存在的交給 create_all
+            have = {c["name"] for c in inspector.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                if not col.nullable and col.server_default is None:
+                    raise RuntimeError(f"{table.name}.{col.name} 不可為 NULL 又沒有 server_default，無法自動新增")
+                ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(engine.dialect)}'
+                if col.server_default is not None:
+                    ddl += f" DEFAULT {col.server_default.arg.text}"
+                if not col.nullable:
+                    ddl += " NOT NULL"
+                fk = next(iter(col.foreign_keys), None)
+                if fk is not None:
+                    ddl += f' REFERENCES "{fk.column.table.name}"("{fk.column.name}")'
+                    if fk.ondelete:
+                        ddl += f" ON DELETE {fk.ondelete}"
+                conn.exec_driver_sql(ddl)
+                added.append(f"{table.name}.{col.name}")
+    return added

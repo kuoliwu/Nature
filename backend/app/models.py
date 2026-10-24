@@ -147,6 +147,7 @@ class Project(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), index=True)  # 案名
     phone: Mapped[str | None] = mapped_column(String(30))  # 電話
+    address: Mapped[str | None] = mapped_column(String(255))  # 建案地址
     community_address: Mapped[str | None] = mapped_column(String(255))  # 社區地址
     community_manager: Mapped[str | None] = mapped_column(String(50))  # 社區經理
     note: Mapped[str | None] = mapped_column(Text)
@@ -154,6 +155,9 @@ class Project(TimestampMixin, Base):
     units: Mapped[list["Unit"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     batches: Mapped[list["BookingBatch"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
+    )
+    checklist: Mapped[list["InspectionCategory"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="InspectionCategory.sort_order"
     )
 
 
@@ -173,6 +177,10 @@ class Unit(TimestampMixin, Base):
     owner_email: Mapped[str | None] = mapped_column(String(255))
     # 身分證只存雜湊（SHA-256 + 鹽），用於預約時「強制身分證驗證」防選錯戶別
     owner_id_hash: Mapped[str | None] = mapped_column(String(64))
+
+    area_ping: Mapped[float | None]  # 坪數
+    handover_date: Mapped[date | None]  # 交屋日期
+    note: Mapped[str | None] = mapped_column(Text)
 
     # 報告上傳開關：上傳成功後自動關閉，避免重複上傳
     report_upload_enabled: Mapped[bool] = mapped_column(default=True)
@@ -407,16 +415,23 @@ class FormSubmissionFile(Base):
 
 # ---------------------------------------------------------------------------
 # 5. 檢查項目
-#   類別(窗類) → 項目(陽台窗) → 檢查點(膠條 / 密合度 / 五金)
-#   類別(水電類) → 項目(給水) → 檢查點(浴室 / 陽台 / 廚房)
+#   類別(窗戶) → 項目(陽台窗) → 檢查點(膠條 / 密合度 / 五金)
+#   類別(水電) → 項目(給水) → 檢查點(浴室 / 陽台 / 廚房)
+#   project_id 為 NULL 的是公司範本；新建案會複製一份範本，之後各自修改。
+#   已有檢查紀錄的項目不能刪除，只能停用（is_active=False），以保留歷史紀錄。
 # ---------------------------------------------------------------------------
 class InspectionCategory(Base):
     __tablename__ = "inspection_categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(30), unique=True)
+    # 範本用固定代碼（windows / plumbing / other）；建案的複本加上建案編號以維持唯一
+    code: Mapped[str] = mapped_column(String(40), unique=True)
     name: Mapped[str] = mapped_column(String(50))
     sort_order: Mapped[int] = mapped_column(default=0)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
+
+    project: Mapped["Project | None"] = relationship(back_populates="checklist")
 
     items: Mapped[list["InspectionItem"]] = relationship(
         back_populates="category", cascade="all, delete-orphan", order_by="InspectionItem.sort_order"
@@ -449,6 +464,7 @@ class InspectionCheckPoint(Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("inspection_items.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(50))
     sort_order: Mapped[int] = mapped_column(default=0)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
 
     item: Mapped[InspectionItem] = relationship(back_populates="check_points")
 

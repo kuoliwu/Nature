@@ -102,10 +102,26 @@ def get_current_user(
         payload = jwt.decode(creds.credentials, _jwt_secret(), algorithms=["HS256"])
     except jwt.PyJWTError:
         raise unauthorized
+    if "sub" not in payload or payload.get("typ") == "download":  # 下載連結的 token 不能拿來登入
+        raise unauthorized
     user = db.get(User, int(payload["sub"]))
     if user is None or not user.is_active or payload.get("pwd") != (user.password_hash or "")[-8:]:
         raise unauthorized
     return user
+
+
+def create_download_token(data: dict, minutes: int = 5) -> tuple[str, datetime]:
+    """短效下載連結：讓手機用瀏覽器直接下載檔案（瀏覽器無法帶登入 header）"""
+    expires = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    return jwt.encode({**data, "typ": "download", "exp": expires}, _jwt_secret(), algorithm="HS256"), expires
+
+
+def read_download_token(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, _jwt_secret(), algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+    return payload if payload.get("typ") == "download" else None
 
 
 # ---------------------------------------------------------------------------

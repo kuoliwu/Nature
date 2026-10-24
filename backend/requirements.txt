@@ -11,6 +11,9 @@ reportlab==4.2.5
 pypdf==5.1.0
 Pillow==11.0.0
 
+# Excel 匯入匯出
+openpyxl==3.1.5
+
 # 測試用
 pytest==8.3.4
 httpx==0.28.1

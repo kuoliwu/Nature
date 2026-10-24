@@ -5,7 +5,7 @@ from sqlalchemy import func, inspect, select
 
 from app import models  # noqa: F401  確保所有 Model 已註冊到 Base.metadata
 from app.config import settings
-from app.database import Base, SessionLocal, engine, is_db_initialized
+from app.database import Base, SessionLocal, add_missing_columns, engine, is_db_initialized
 from app.models import User
 from app.schemas import DBStatusOut, HealthOut, InitDBIn, InitDBOut, TableCount
 from app.seed import seed_inspection_checklist
@@ -45,8 +45,9 @@ def init_db(body: InitDBIn | None = None):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, 'reset=true 時 confirm 必須為 "RESET"')
         Base.metadata.drop_all(engine)
 
-    # create_all 只會建立尚不存在的資料表，重複呼叫是安全的
+    # create_all 只會建立尚不存在的資料表；add_missing_columns 補上新版本的欄位。重複呼叫是安全的
     Base.metadata.create_all(engine)
+    add_missing_columns()
 
     seeded = None
     if body.seed_checklist:

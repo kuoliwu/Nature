@@ -33,7 +33,11 @@ export function Screen({ children, scroll = true }: { children: ReactNode; scrol
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {scroll ? (
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          contentInsetAdjustmentBehavior="automatic"
+        >
           {inner}
         </ScrollView>
       ) : (
@@ -170,4 +174,45 @@ export const styles = StyleSheet.create({
   dimmed: { opacity: 0.6 },
   message: { borderRadius: 12, padding: 14, borderWidth: 1, gap: 4 },
   messageText: { fontSize: 15, fontWeight: '600' },
+});
+
+export function HeaderButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={12} style={{ paddingHorizontal: 12 }}>
+      <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function ListRow(props: { title: string; subtitle?: string | null; right?: string; onPress?: () => void; muted?: boolean }) {
+  return (
+    <Pressable
+      onPress={props.onPress}
+      disabled={!props.onPress}
+      style={({ pressed }) => [rowStyles.row, pressed && { opacity: 0.7 }]}
+    >
+      <View style={styles.flex}>
+        <Text style={[rowStyles.title, props.muted && { color: colors.muted }]}>{props.title}</Text>
+        {!!props.subtitle && <Text style={rowStyles.subtitle}>{props.subtitle}</Text>}
+      </View>
+      {props.right !== undefined && <Text style={rowStyles.right}>{props.right}</Text>}
+      {props.onPress && <Text style={rowStyles.chevron}>›</Text>}
+    </Pressable>
+  );
+}
+
+const rowStyles = StyleSheet.create({
+  row: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  title: { fontSize: 16, fontWeight: '600', color: colors.text },
+  subtitle: { fontSize: 13, color: colors.muted, marginTop: 2 },
+  right: { fontSize: 14, color: colors.muted },
+  chevron: { fontSize: 22, color: '#9ca3af', marginLeft: 4 },
 });

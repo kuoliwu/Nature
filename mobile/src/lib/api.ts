@@ -43,15 +43,92 @@ export type UserInput = {
   permissions?: string[];
 };
 
-export type Project = {
-  id: number;
+export type ProjectInput = {
   name: string;
-  phone: string | null;
-  community_address: string | null;
-  community_manager: string | null;
-  note: string | null;
-  created_at: string;
+  phone?: string | null;
+  address?: string | null; // 建案地址
+  community_address?: string | null; // 社區地址
+  community_manager?: string | null;
+  note?: string | null;
 };
+
+export type Project = Required<ProjectInput> & {
+  id: number;
+  created_at: string;
+  unit_count: number;
+  batch_count: number;
+};
+
+export type UnitImportResult = {
+  dry_run: boolean; // true：只檢查、沒有寫入
+  created: string[];
+  updated: string[];
+  unchanged: number;
+  errors: { row: number; message: string }[];
+};
+
+export type UnitInput = {
+  unit_no: string;
+  building?: string | null;
+  floor?: string | null;
+  address?: string | null;
+  owner_name?: string | null;
+  owner_phone?: string | null;
+  owner_email?: string | null;
+  area_ping?: number | null;
+  handover_date?: string | null; // YYYY-MM-DD
+  note?: string | null;
+};
+
+export type Unit = Required<UnitInput> & {
+  id: number;
+  project_id: number;
+  report_upload_enabled: boolean;
+};
+
+export type BatchInput = {
+  name: string;
+  service_type: 'health_check' | 'inspection';
+  start_date: string;
+  end_date: string;
+  day_start: string; // HH:MM
+  day_end: string;
+  slot_capacity: number;
+  breaks: { start: string; end: string }[]; // 每天的屏蔽區段
+};
+
+export type Slot = {
+  id: number;
+  start_time: string; // HH:MM:SS
+  end_time: string;
+  capacity: number;
+  booked: number;
+  is_open: boolean;
+};
+
+export type Batch = {
+  id: number;
+  project_id: number;
+  name: string;
+  service_type: 'health_check' | 'inspection';
+  slot_minutes: number;
+  slot_capacity: number;
+  is_active: boolean;
+  first_date: string | null;
+  last_date: string | null;
+  day_count: number;
+  slot_count: number;
+  open_slot_count: number;
+  booked_count: number;
+};
+
+export type BatchDay = { date: string; slots: Slot[] };
+export type BatchDetail = Batch & { days: BatchDay[] };
+
+export type CheckPoint = { id: number; name: string; is_active: boolean; sort_order: number };
+export type ChecklistItem = CheckPoint & { check_points: CheckPoint[] };
+export type ChecklistCategory = CheckPoint & { items: ChecklistItem[] };
+export type ChecklistPatch = { name?: string; is_active?: boolean };
 
 export class ApiError extends Error {
   status?: number;
@@ -73,6 +150,23 @@ const state: { baseUrl: string; token: string | null; onUnauthorized?: () => voi
 
 export function configureApi(next: Partial<typeof state>) {
   Object.assign(state, next);
+}
+
+/** 給下載 / 上傳檔案（lib/files.ts）用 */
+export function apiState(): { baseUrl: string; token: string | null } {
+  return { baseUrl: state.baseUrl, token: state.token };
+}
+
+export function errorFromResponse(status: number, data: unknown): ApiError {
+  const detail = (data as { detail?: unknown } | null)?.detail;
+  const msg =
+    typeof detail === 'string'
+      ? detail
+      : Array.isArray(detail)
+        ? detail.map((d: { msg?: string }) => d.msg).join('\n')
+        : `伺服器回應錯誤 (${status})`;
+  if (status === 401 && state.token) state.onUnauthorized?.();
+  return new ApiError(msg, status);
 }
 
 type RequestInit = {
@@ -151,4 +245,65 @@ export const api = {
 
   // 建案
   projects: () => request<Project[]>('/projects'),
+  project: (id: number) => request<Project>(`/projects/${id}`),
+  createProject: (body: ProjectInput) => request<Project>('/projects', { method: 'POST', body }),
+  updateProject: (id: number, body: Partial<ProjectInput>) =>
+    request<Project>(`/projects/${id}`, { method: 'PATCH', body }),
+  deleteProject: (id: number) => request<null>(`/projects/${id}`, { method: 'DELETE' }),
+
+  // 住戶
+  units: (projectId: number) => request<Unit[]>(`/projects/${projectId}/units`),
+  unit: (id: number) => request<Unit>(`/units/${id}`),
+  createUnit: (projectId: number, body: UnitInput) =>
+    request<Unit>(`/projects/${projectId}/units`, { method: 'POST', body }),
+  bulkCreateUnits: (projectId: number, unit_nos: string[]) =>
+    request<{ created: string[]; skipped: string[] }>(`/projects/${projectId}/units/bulk`, {
+      method: 'POST',
+      body: { unit_nos },
+    }),
+  bulkCreateUnitsDetailed: (projectId: number, units: { unit_no: string; building: string; floor: string }[]) =>
+    request<{ created: string[]; skipped: string[] }>(`/projects/${projectId}/units/bulk`, {
+      method: 'POST',
+      body: { units },
+    }),
+  unitsExportLink: (projectId: number, format: 'xlsx' | 'csv') =>
+    request<{ url: string; filename: string; expires_at: string }>(
+      `/projects/${projectId}/units/export-link?format=${format}`,
+      { method: 'POST' },
+    ),
+  updateUnit: (id: number, body: Partial<UnitInput>) => request<Unit>(`/units/${id}`, { method: 'PATCH', body }),
+  deleteUnit: (id: number) => request<null>(`/units/${id}`, { method: 'DELETE' }),
+
+  // 健檢日期與時段
+  batches: (projectId: number) => request<Batch[]>(`/projects/${projectId}/batches`),
+  batch: (id: number) => request<BatchDetail>(`/batches/${id}`),
+  createBatch: (projectId: number, body: BatchInput) =>
+    request<BatchDetail>(`/projects/${projectId}/batches`, { method: 'POST', body }),
+  addBatchDates: (id: number, body: Omit<BatchInput, 'name' | 'service_type' | 'slot_capacity'>) =>
+    request<BatchDetail>(`/batches/${id}/dates`, { method: 'POST', body }),
+  updateBatch: (id: number, body: { name?: string; is_active?: boolean }) =>
+    request<Batch>(`/batches/${id}`, { method: 'PATCH', body }),
+  deleteBatch: (id: number) => request<null>(`/batches/${id}`, { method: 'DELETE' }),
+  updateSlot: (id: number, body: { is_open?: boolean; capacity?: number }) =>
+    request<Slot>(`/slots/${id}`, { method: 'PATCH', body }),
+  updateDay: (batchId: number, date: string, is_open: boolean) =>
+    request<BatchDay>(`/batches/${batchId}/days/${date}`, { method: 'PATCH', body: { is_open } }),
+
+  // 檢查項目清單（每個建案一份）
+  checklist: (projectId: number) => request<ChecklistCategory[]>(`/projects/${projectId}/checklist`),
+  addCategory: (projectId: number, name: string) =>
+    request<ChecklistCategory>(`/projects/${projectId}/checklist/categories`, { method: 'POST', body: { name } }),
+  updateCategory: (id: number, body: ChecklistPatch) =>
+    request<ChecklistCategory>(`/checklist/categories/${id}`, { method: 'PATCH', body }),
+  deleteCategory: (id: number) => request<null>(`/checklist/categories/${id}`, { method: 'DELETE' }),
+  addItem: (categoryId: number, name: string) =>
+    request<ChecklistCategory>(`/checklist/categories/${categoryId}/items`, { method: 'POST', body: { name } }),
+  updateItem: (id: number, body: ChecklistPatch) =>
+    request<ChecklistCategory>(`/checklist/items/${id}`, { method: 'PATCH', body }),
+  deleteItem: (id: number) => request<ChecklistCategory>(`/checklist/items/${id}`, { method: 'DELETE' }),
+  addPoint: (itemId: number, name: string) =>
+    request<ChecklistCategory>(`/checklist/items/${itemId}/points`, { method: 'POST', body: { name } }),
+  updatePoint: (id: number, body: ChecklistPatch) =>
+    request<ChecklistCategory>(`/checklist/points/${id}`, { method: 'PATCH', body }),
+  deletePoint: (id: number) => request<ChecklistCategory>(`/checklist/points/${id}`, { method: 'DELETE' }),
 };

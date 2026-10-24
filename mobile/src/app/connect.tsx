@@ -5,7 +5,7 @@ import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Field, Message, Screen, colors } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { normalizeBaseUrl, suggestHostFromDevServer } from '@/lib/url';
+import { normalizeBaseUrl, suggestHostForWeb, suggestHostFromDevServer } from '@/lib/url';
 
 type Action = 'health' | 'init' | 'status';
 
@@ -13,6 +13,7 @@ type Result = {
   ok: boolean;
   title: string;
   lines?: string[];
+  fixHost?: string; // 建議改用的主機位址（顯示一鍵修正按鈕）
   tables?: { table: string; rows: number }[];
 };
 
@@ -28,16 +29,22 @@ function confirm(title: string, message: string): Promise<boolean> {
 
 export default function ConnectScreen() {
   const { server, updateServer } = useAuth();
-  // 尚未設定時，預先帶入開發伺服器所在電腦的 IP（用 Expo Go 開啟時才有）
-  const [host, setHost] = useState(server.host || suggestHostFromDevServer(Constants.expoConfig?.hostUri) || '');
+  // 尚未設定時預先帶入建議位址：網頁版用網頁本身的主機（電腦上即 localhost），Expo Go 用開發伺服器的 IP
+  const suggested =
+    Platform.OS === 'web'
+      ? suggestHostForWeb(typeof window !== 'undefined' ? window.location.hostname : null)
+      : suggestHostFromDevServer(Constants.expoConfig?.hostUri);
+  const [hostInput, setHost] = useState(server.host || suggested || '');
   const [adminKey, setAdminKey] = useState(server.adminKey);
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState<Action | null>(null);
   const [result, setResult] = useState<Result | null>(null);
 
-  const baseUrl = normalizeBaseUrl(host);
+  const inputBaseUrl = normalizeBaseUrl(hostInput);
 
-  async function run(action: Action) {
+  async function run(action: Action, hostOverride?: string) {
+    const host = hostOverride ?? hostInput;
+    const baseUrl = normalizeBaseUrl(host);
     if (!host.trim()) {
       setResult({ ok: false, title: '請先填寫「主機位址」', lines: ['在最上面的欄位輸入，例如：192.168.68.109:8000'] });
       return;
@@ -99,7 +106,13 @@ export default function ConnectScreen() {
         });
       }
     } catch (e) {
-      setResult({ ok: false, title: e instanceof Error ? e.message : String(e) });
+      const wrongHostOnWeb = Platform.OS === 'web' && !!suggested && normalizeBaseUrl(suggested) !== baseUrl;
+      setResult({
+        ok: false,
+        title: e instanceof Error ? e.message : String(e),
+        lines: wrongHostOnWeb ? [`在電腦上使用網頁版時，主機位址要填「${suggested}」（WSL 下電腦連自己的區網 IP 會逾時）`] : undefined,
+        fixHost: wrongHostOnWeb ? suggested : undefined,
+      });
     } finally {
       setBusy(null);
     }
@@ -110,13 +123,13 @@ export default function ConnectScreen() {
       <Card>
         <Field
           label="主機位址"
-          value={host}
+          value={hostInput}
           onChangeText={setHost}
           placeholder="例：192.168.68.109:8000"
           autoCapitalize="none"
           keyboardType="url"
           hint={
-            host.trim() ? (baseUrl ? `將連線到 ${baseUrl}` : '格式不正確') : '輸入 run.py 印出的 IP；未填 port 時預設 8000'
+            hostInput.trim() ? (inputBaseUrl ? `將連線到 ${inputBaseUrl}` : '格式不正確') : '輸入 run.py 印出的 IP；未填 port 時預設 8000'
           }
         />
         <Field
@@ -156,6 +169,17 @@ export default function ConnectScreen() {
               {line}
             </Text>
           ))}
+          {result.fixHost && (
+            <View style={{ marginTop: 8 }}>
+              <Button
+                label={`改用 ${result.fixHost} 並重新測試`}
+                onPress={() => {
+                  setHost(result.fixHost!);
+                  void run('health', result.fixHost);
+                }}
+              />
+            </View>
+          )}
           {result.tables && (
             <View style={localStyles.table}>
               {result.tables.map((t) => (

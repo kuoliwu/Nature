@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -37,9 +37,19 @@ class DBStatusOut(BaseModel):
 
 # --- 建案 / 戶別 -----------------------------------------------------------
 class ProjectIn(BaseModel):
-    name: str = Field(..., max_length=100)
+    name: str = Field(..., min_length=1, max_length=100)
     phone: str | None = Field(None, max_length=30)
-    community_address: str | None = Field(None, max_length=255)
+    address: str | None = Field(None, max_length=255, description="建案地址")
+    community_address: str | None = Field(None, max_length=255, description="社區地址")
+    community_manager: str | None = Field(None, max_length=50)
+    note: str | None = None
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    phone: str | None = Field(None, max_length=30)
+    address: str | None = Field(None, max_length=255, description="建案地址")
+    community_address: str | None = Field(None, max_length=255, description="社區地址")
     community_manager: str | None = Field(None, max_length=50)
     note: str | None = None
 
@@ -48,17 +58,75 @@ class ProjectOut(ProjectIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
     created_at: datetime
+    unit_count: int = 0
+    batch_count: int = 0
 
 
 class UnitIn(BaseModel):
-    unit_no: str = Field(..., max_length=30, description="戶別，例如 A-5F-1")
-    building: str | None = None
-    floor: str | None = None
-    address: str | None = None
-    owner_name: str | None = None
-    owner_phone: str | None = None
+    unit_no: str = Field(..., min_length=1, max_length=30, description="戶別，例如 A-5F-1")
+    building: str | None = Field(None, max_length=20)
+    floor: str | None = Field(None, max_length=10)
+    address: str | None = Field(None, max_length=255)
+    owner_name: str | None = Field(None, max_length=50)
+    owner_phone: str | None = Field(None, max_length=20)
     owner_email: EmailStr | None = None
-    owner_id_number: str | None = Field(None, description="身分證字號，只會以雜湊值儲存")
+    area_ping: float | None = Field(None, ge=0, le=100000, description="坪數")
+    handover_date: date | None = None
+    note: str | None = None
+    owner_id_number: str | None = Field(None, description="身分證字號，只會以雜湊值儲存（選填）")
+
+
+class UnitUpdate(BaseModel):
+    """只更新有傳的欄位；要清空某欄請傳 null"""
+
+    unit_no: str | None = Field(None, min_length=1, max_length=30)
+    building: str | None = Field(None, max_length=20)
+    floor: str | None = Field(None, max_length=10)
+    address: str | None = Field(None, max_length=255)
+    owner_name: str | None = Field(None, max_length=50)
+    owner_phone: str | None = Field(None, max_length=20)
+    owner_email: EmailStr | None = None
+    area_ping: float | None = Field(None, ge=0, le=100000)
+    handover_date: date | None = None
+    note: str | None = None
+
+
+class UnitBulkItem(BaseModel):
+    unit_no: str = Field(..., max_length=30)
+    building: str | None = Field(None, max_length=20)
+    floor: str | None = Field(None, max_length=10)
+
+
+class UnitBulkIn(BaseModel):
+    """unit_nos：只有戶別（手動貼上清單）；units：連同棟別、樓層（依棟別 × 樓層自動產生）"""
+
+    unit_nos: list[str] | None = Field(None, max_length=2000, description="戶別清單，一個元素一戶")
+    units: list[UnitBulkItem] | None = Field(None, max_length=2000)
+    building: str | None = Field(None, max_length=20, description="套用到 unit_nos 每一戶的棟別")
+
+
+class UnitBulkOut(BaseModel):
+    created: list[str]
+    skipped: list[str]  # 已存在或重複
+
+
+class DownloadLinkOut(BaseModel):
+    url: str
+    filename: str
+    expires_at: datetime
+
+
+class ImportRowError(BaseModel):
+    row: int  # Excel 列號
+    message: str
+
+
+class UnitImportOut(BaseModel):
+    dry_run: bool  # True：只檢查、沒有寫入
+    created: list[str]
+    updated: list[str]
+    unchanged: int
+    errors: list[ImportRowError]
 
 
 class UnitOut(BaseModel):
@@ -72,8 +140,129 @@ class UnitOut(BaseModel):
     owner_name: str | None
     owner_phone: str | None
     owner_email: str | None
+    area_ping: float | None
+    handover_date: date | None
+    note: str | None
     has_id_verification: bool
     report_upload_enabled: bool
+
+
+# --- 健檢日期（預約批次）與時段 -------------------------------------------
+class TimeRange(BaseModel):
+    start: time
+    end: time
+
+
+class BatchIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    service_type: str = Field("health_check", pattern="^(inspection|health_check)$")
+    start_date: date
+    end_date: date
+    day_start: time = Field(time(9, 0), description="每天第一個時段開始")
+    day_end: time = Field(time(17, 0), description="每天最後一個時段結束")
+    slot_minutes: int = Field(30, ge=10, le=240)
+    slot_capacity: int = Field(3, ge=1, le=50, description="每個時段最多幾組")
+    breaks: list[TimeRange] = Field([], max_length=10, description="每天的屏蔽區段，例如午休 12:00–13:00")
+
+
+class BatchDatesIn(BaseModel):
+    start_date: date
+    end_date: date
+    day_start: time = time(9, 0)
+    day_end: time = time(17, 0)
+    breaks: list[TimeRange] = Field([], max_length=10)
+
+
+class BatchUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    is_active: bool | None = None
+
+
+class SlotOut(BaseModel):
+    id: int
+    start_time: time
+    end_time: time
+    capacity: int
+    booked: int
+    is_open: bool
+
+
+class BatchDayOut(BaseModel):
+    date: date
+    slots: list[SlotOut]
+
+
+class BatchOut(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    service_type: str
+    slot_minutes: int
+    slot_capacity: int
+    quota_mode: str
+    is_active: bool
+    first_date: date | None
+    last_date: date | None
+    day_count: int
+    slot_count: int
+    open_slot_count: int
+    booked_count: int
+
+
+class BatchDetailOut(BatchOut):
+    days: list[BatchDayOut]
+
+
+class SlotUpdate(BaseModel):
+    is_open: bool | None = None
+    capacity: int | None = Field(None, ge=1, le=50)
+
+
+class DayUpdate(BaseModel):
+    is_open: bool
+
+
+# --- 檢查項目清單（每個建案一份）------------------------------------------
+class NameIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+
+
+class ChecklistItemIn(NameIn):
+    check_points: list[str] | None = Field(
+        None, description="檢查點名稱；不傳時沿用同類別第一個項目的檢查點（例如窗戶的膠條 / 密合度 / 五金）"
+    )
+
+
+class ChecklistUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=50)
+    is_active: bool | None = None
+    sort_order: int | None = None
+
+
+class ChecklistPointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    is_active: bool
+    sort_order: int
+
+
+class ChecklistItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    is_active: bool
+    sort_order: int
+    check_points: list[ChecklistPointOut]
+
+
+class ChecklistCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    is_active: bool
+    sort_order: int
+    items: list[ChecklistItemOut]
 
 
 # --- 檢查項目 -------------------------------------------------------------

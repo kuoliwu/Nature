@@ -12,9 +12,15 @@ ACTIVE_STATUSES = (BookingStatus.BOOKED, BookingStatus.COMPLETED)
 
 
 def generate_slots(
-    db: Session, batch: BookingBatch, slot_date: date, day_start: time, day_end: time
+    db: Session,
+    batch: BookingBatch,
+    slot_date: date,
+    day_start: time,
+    day_end: time,
+    breaks: list[tuple[time, time]] = (),
 ) -> list[TimeSlot]:
-    """在 day_start ~ day_end 之間依 batch.slot_minutes 切時段；已存在的時段略過。"""
+    """在 day_start ~ day_end 之間依 batch.slot_minutes 切時段；
+    與任一屏蔽區段（例如午休 12:00–13:00）重疊的時段不產生；已存在的時段略過。"""
     existing = set(
         db.scalars(
             select(TimeSlot.start_time).where(
@@ -28,7 +34,9 @@ def generate_slots(
 
     created: list[TimeSlot] = []
     while cursor + step <= end:
-        if cursor.time() not in existing:
+        slot_start, slot_end = cursor.time(), (cursor + step).time()
+        blocked = any(slot_start < b_end and slot_end > b_start for b_start, b_end in breaks)
+        if not blocked and slot_start not in existing:
             slot = TimeSlot(
                 batch_id=batch.id,
                 slot_date=slot_date,

@@ -19,10 +19,9 @@ function RootStack() {
 
   return (
     <Stack screenOptions={{ headerTitleAlign: 'center' }}>
-      {/* 登入後才看得到 */}
+      {/* 登入後才看得到：(app) 底下的所有頁面 */}
       <Stack.Protected guard={!!user}>
         <Stack.Screen name="(app)" options={{ headerShown: false }} />
-        <Stack.Screen name="user/[id]" options={{ title: '人員資料', presentation: 'modal' }} />
       </Stack.Protected>
 
       {/* 未登入時 */}

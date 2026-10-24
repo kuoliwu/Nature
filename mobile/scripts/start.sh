@@ -2,6 +2,7 @@
 # 啟動 Expo 開發伺服器，讓 QR code 使用正確的 IP
 #   npm run wifi   → 手機與電腦同一個 Wi-Fi
 #   npm run 5g     → 手機走行動網路，經 Tailscale 連線
+#   npm run wifi -- --clear   → 清除快取後啟動（大幅修改程式後使用）
 set -euo pipefail
 
 mode="${1:-wifi}"
@@ -30,4 +31,4 @@ echo "  APP 主機位址請填：$ip:8000"
 echo
 
 export REACT_NATIVE_PACKAGER_HOSTNAME="$ip"
-exec npx expo start
+exec npx expo start "${@:2}"  # 其他參數照傳，例如 npm run wifi -- --clear
