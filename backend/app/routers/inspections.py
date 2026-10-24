@@ -24,6 +24,7 @@ from app.models import (
     InspectionPhoto,
     InspectionResult,
     InspectionStatus,
+    Report,
     TimeSlot,
     User,
 )
@@ -46,6 +47,12 @@ from app.services.booking import SERVICE_LABEL, slot_label
 from app.services.inspection_media import MediaError, render_signature, save_photo, save_signature_png
 from app.services.mailer import Attachment, send_email_safely
 from app.services.report_pdf import ReportData, ReportPhoto, ReportPoint, build_report
+
+
+def external_report_out(db, request, booking):  # 延遲匯入，避免 routers 之間循環匯入
+    from app.routers.reports import external_report_out as impl
+
+    return impl(db, request, booking)
 
 router = APIRouter(tags=["驗屋"])
 can_view = require_any_permission("inspection.edit", "booking.view")
@@ -148,6 +155,7 @@ def _inspection_out(db: Session, request: Request, booking: Booking) -> Inspecti
     slot = booking.slot
     return InspectionOut(
         booking_id=booking.id,
+        unit_id=booking.unit_id,
         project_name=booking.unit.project.name,
         unit_no=booking.unit.unit_no,
         place=_place(booking),
@@ -167,6 +175,8 @@ def _inspection_out(db: Session, request: Request, booking: Booking) -> Inspecti
         sent_at=inspection.sent_at if inspection else None,
         sent_to=inspection.sent_to if inspection else None,
         default_email=booking.contact_email or booking.unit.owner_email,
+        external_report=external_report_out(db, request, booking),
+        upload_enabled=booking.unit.report_upload_enabled,
         checked=checked,
         total=total,
         fail_count=fails,
@@ -464,8 +474,11 @@ def send_report(
         "再次感謝您的配合！",
         "",
     ])
+    attachments = [Attachment(report_filename(booking), pdf)]
+    external = db.scalar(select(Report).where(Report.booking_id == booking.id))
+    if external:  # 有上傳外部報告時一併附上
+        attachments.append(Attachment(external.original_filename, (settings.storage_dir / external.file_path).read_bytes()))
     tasks.add_task(
-        send_email_safely, [to], f"【{unit.project.name}】{title}（{unit.unit_no}）", body_text,
-        [Attachment(report_filename(booking), pdf)],
+        send_email_safely, [to], f"【{unit.project.name}】{title}（{unit.unit_no}）", body_text, attachments,
     )
     return _inspection_out(db, request, booking)

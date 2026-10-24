@@ -43,6 +43,15 @@ export async function pickImage(source: 'camera' | 'library'): Promise<PickedFil
  *       所以改用 expo-file-system 的 File.upload。
  * 網頁：用瀏覽器的 File 物件 + fetch。
  */
+/** 選一個 PDF（外部報告）；取消時回傳 null */
+export async function pickPdf(): Promise<PickedFile | null> {
+  const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+  if (result.canceled || !result.assets?.length) return null;
+  const a = result.assets[0];
+  if (a.size && a.size > 30 * 1024 * 1024) throw new ApiError('報告 PDF 不能超過 30MB');
+  return { uri: a.uri, name: a.name, mimeType: 'application/pdf', file: a.file };
+}
+
 export async function uploadFile<T>(path: string, file: PickedFile, fields: Record<string, string> = {}): Promise<T> {
   const { baseUrl, token } = apiState();
   const url = `${baseUrl}${path}`;

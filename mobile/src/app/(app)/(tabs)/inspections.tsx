@@ -19,6 +19,7 @@ export default function InspectionScheduleScreen() {
   const today = toDateString(new Date());
   const [day, setDay] = useState(today);
   const { data: items, error, refresh, refreshing } = useLoad(() => api.schedule(day), [day]);
+  const { data: overdue } = useLoad(() => api.overdue().catch(() => []), []);
 
   return (
     <FlatList
@@ -38,6 +39,12 @@ export default function InspectionScheduleScreen() {
             </Pressable>
             <DayButton label="後一天 ›" onPress={() => setDay(shiftDay(day, 1))} />
           </View>
+          {!!overdue?.length && (
+            <Pressable onPress={() => router.push('/overdue')} style={localStyles.overdue}>
+              <Text style={localStyles.overdueText}>⚠️ {overdue.length} 戶報告逾期未完成（預約日後超過 7 天）</Text>
+              <Text style={localStyles.overdueText}>›</Text>
+            </Pressable>
+          )}
           {error && <Message kind="error" text={error} />}
         </View>
       }
@@ -92,6 +99,8 @@ const localStyles = StyleSheet.create({
   dayButton: { paddingHorizontal: 10, paddingVertical: 8 },
   dayButtonText: { color: colors.primary, fontSize: 15 },
   empty: { textAlign: 'center', color: colors.muted, marginTop: 40 },
+  overdue: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fef2f2', borderColor: '#fca5a5', borderWidth: 1, borderRadius: 12, padding: 12 },
+  overdueText: { color: '#991b1b', fontSize: 15, fontWeight: '600' },
   row: { backgroundColor: colors.card, borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   time: { alignItems: 'center', width: 54 },
   timeText: { fontSize: 18, fontWeight: '700', color: colors.text },

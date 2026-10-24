@@ -53,6 +53,19 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     mail_from: str = ""
 
+    # 每日排程（測試時關閉）
+    scheduler_enabled: bool = True
+    reminder_hour: int = 9  # 每天幾點檢查「預約日後 7 / 14 天報告未完成」
+    reminder_to: str = ""  # 提醒信收件人（內部人員），逗號分隔；空白時寄到 MAIL_FROM / SMTP_USER
+    backup_hour: int = 3  # 每天幾點備份
+    backup_dir: Path = BASE_DIR / "backups"  # 建議設到另一顆硬碟或雲端同步資料夾
+    backup_keep_days: int = 30
+
+    @property
+    def reminder_recipients(self) -> list[str]:
+        listed = [x.strip() for x in self.reminder_to.split(",") if x.strip()]
+        return listed or [x for x in (self.mail_from or self.smtp_user,) if x] or ["admin@localhost"]
+
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")

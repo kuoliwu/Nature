@@ -7,7 +7,9 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 export default function AccountScreen() {
-  const { user, baseUrl, signIn, signOut } = useAuth();
+  const { user, baseUrl, signIn, signOut, can } = useAuth();
+  const [backup, setBackup] = useState<{ ok: boolean; text: string } | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -52,6 +54,30 @@ export default function AccountScreen() {
         <Button label="更新密碼" onPress={changePassword} loading={busy} disabled={!oldPassword} />
       </Card>
       {result && <Message kind={result.ok ? 'ok' : 'error'} text={result.text} />}
+
+      {can('user.manage') && (
+        <Card title="資料備份">
+          <Text style={localStyles.meta}>系統每天自動備份資料庫與照片、簽名等檔案；也可以立即備份一次。</Text>
+          <Button
+            label="立即備份"
+            variant="outline"
+            loading={backingUp}
+            onPress={async () => {
+              setBackingUp(true);
+              try {
+                const r = await api.runBackup();
+                setBackup({ ok: true, text: `備份完成：資料庫已備份、複製 ${r.files_copied} 個檔案
+位置：${r.backup_dir}` });
+              } catch (e) {
+                setBackup({ ok: false, text: e instanceof Error ? e.message : String(e) });
+              } finally {
+                setBackingUp(false);
+              }
+            }}
+          />
+          {backup && <Message kind={backup.ok ? 'ok' : 'error'} text={backup.text} />}
+        </Card>
+      )}
 
       <Button label="登出" variant="danger" onPress={() => void signOut()} />
     </Screen>

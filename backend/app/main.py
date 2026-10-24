@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from app import models  # noqa: F401  確保所有 Model 已註冊
 from app.config import settings
 from app.database import Base, add_missing_columns, engine, is_db_initialized
+from app.services.scheduler import start_scheduler, stop_scheduler
 from app.routers import (
     auth,
     authorizations,
@@ -16,6 +17,7 @@ from app.routers import (
     downloads,
     inspections,
     projects,
+    reports,
     system,
     users,
 )
@@ -34,7 +36,9 @@ async def lifespan(_app: FastAPI):
         Base.metadata.create_all(engine)
         for col in add_missing_columns():
             print(f"  資料庫升級：新增欄位 {col}")
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
@@ -62,5 +66,6 @@ app.include_router(downloads.router)
 app.include_router(booking.admin)
 app.include_router(booking.public)
 app.include_router(inspections.router)
+app.include_router(reports.router)
 app.include_router(authorizations.public)
 app.include_router(authorizations.admin)

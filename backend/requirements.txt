@@ -14,6 +14,9 @@ Pillow==11.0.0
 # Excel 匯入匯出
 openpyxl==3.1.5
 
+# 每日排程（報告未完成提醒、資料庫備份）
+APScheduler==3.10.4
+
 # 測試用
 pytest==8.3.4
 httpx==0.28.1

@@ -10,6 +10,8 @@ os.environ["APP_ENV_FILE"] = str(_tmp / "no.env")  # 不讀 backend/.env，避�
 os.environ["DATABASE_URL"] = f"sqlite:///{(_tmp / 'test.db').as_posix()}"
 os.environ["STORAGE_DIR"] = str(_tmp / "storage")
 os.environ["ADMIN_INIT_KEY"] = "test-key"
+os.environ["SCHEDULER_ENABLED"] = "false"  # 測試時不啟動每日排程
+os.environ["BACKUP_DIR"] = str(_tmp / "backups")
 os.environ["PUBLIC_URL_FILE"] = str(_tmp / "public_url.txt")
 for key in ("PUBLIC_BASE_URL", "SMTP_HOST", "CLOUDFLARE_TUNNEL_TOKEN", "PDF_FONT_PATH"):
     os.environ.pop(key, None)

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Booking, Inspection, InspectionPhoto, Project
+from app.models import Booking, Inspection, InspectionPhoto, Project, Report
 from app.routers.projects import units_export_response
 from app.services.auth import read_download_token
 
@@ -36,6 +36,14 @@ def download(token: str, db: Session = Depends(get_db)):
         if inspection is None or not inspection.signature_path:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "沒有簽名")
         return FileResponse(settings.storage_dir / inspection.signature_path, media_type="image/png")
+    if payload.get("kind") == "external_report":
+        report = db.get(Report, payload["id"])
+        if report is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "報告已刪除")
+        return FileResponse(
+            settings.storage_dir / report.file_path, media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename=report.pdf; filename*=UTF-8''{quote(report.original_filename)}"},
+        )
     if payload.get("kind") == "inspection_report":
         from app.routers.inspections import build_inspection_report, report_filename  # 避免循環匯入
 

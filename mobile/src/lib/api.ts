@@ -184,6 +184,7 @@ export type InspectionItem = { id: number; name: string; points: InspectionPoint
 export type InspectionCategory = { id: number; name: string; items: InspectionItem[] };
 
 export type Inspection = Omit<ScheduleItem, 'project_id'> & {
+  unit_id: number;
   general_note: string | null;
   inspector_name: string | null;
   signer_name: string | null;
@@ -194,8 +195,25 @@ export type Inspection = Omit<ScheduleItem, 'project_id'> & {
   sent_at: string | null;
   sent_to: string | null;
   default_email: string | null;
+  external_report: ExternalReport | null;
+  upload_enabled: boolean;
   categories: InspectionCategory[];
   general_photos: InspectionPhoto[];
+};
+
+export type ExternalReport = { filename: string; size: number; uploaded_at: string; uploaded_by: string | null; url: string };
+
+export type OverdueItem = {
+  booking_id: number;
+  project_name: string;
+  unit_no: string;
+  date: string;
+  start_time: string;
+  days: number;
+  inspection_status: InspectionStatus;
+  contact_name: string;
+  contact_phone: string;
+  reminded: number[];
 };
 
 export type CheckPoint = { id: number; name: string; is_active: boolean; sort_order: number };
@@ -389,6 +407,15 @@ export const api = {
   unapproveReport: (bookingId: number) => request<Inspection>(`/inspections/${bookingId}/unapprove`, { method: 'POST' }),
   sendReport: (bookingId: number, to: string | null) =>
     request<Inspection>(`/inspections/${bookingId}/send`, { method: 'POST', body: { to } }),
+
+  // 報告追蹤、外部報告、備份
+  deleteExternalReport: (bookingId: number) => request<null>(`/bookings/${bookingId}/report`, { method: 'DELETE' }),
+  setUploadSwitch: (unitId: number, enabled: boolean) =>
+    request<null>(`/units/${unitId}/report-upload`, { method: 'PATCH', body: { enabled } }),
+  overdue: () => request<OverdueItem[]>('/reports/overdue'),
+  runReminders: () =>
+    request<{ sent: number; day7: string[]; day14: string[]; error?: string | null }>('/reminders/run', { method: 'POST' }),
+  runBackup: () => request<{ database: string | null; files_copied: number; backup_dir: string }>('/backup/run', { method: 'POST' }),
 
   // 檢查項目清單（每個建案一份）
   checklist: (projectId: number) => request<ChecklistCategory[]>(`/projects/${projectId}/checklist`),

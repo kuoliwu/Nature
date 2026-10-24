@@ -8,7 +8,7 @@ import { api, Inspection, InspectionPhoto, InspectionPoint, ResultValue } from '
 import { useAuth } from '@/lib/auth';
 import { dayLabel, shortTime } from '@/lib/dates';
 import { confirm, errorText } from '@/lib/dialogs';
-import { pickImage, uploadFile } from '@/lib/files';
+import { pickImage, pickPdf, uploadFile } from '@/lib/files';
 import { STATUS_LABEL } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
@@ -100,6 +100,34 @@ export default function InspectionScreen() {
       const updated = await api.sendReport(bookingId, to);
       setData(updated);
       setNotice(`已寄送報告與感謝信給 ${updated.sent_to}`);
+    });
+  }
+
+  async function uploadExternal() {
+    const file = await pickPdf().catch((e) => {
+      setError(errorText(e));
+      return null;
+    });
+    if (!file) return;
+    await run('上傳報告中…', async () => {
+      await uploadFile(`/bookings/${bookingId}/report`, file);
+      setNotice(`已上傳「${file.name}」，此戶的上傳開關已自動關閉`);
+      await reload();
+    });
+  }
+
+  async function deleteExternal() {
+    if (!(await confirm('刪除外部報告', '確定要刪除已上傳的報告？刪除後可以重新上傳。', '刪除', true))) return;
+    await run(null, async () => {
+      await api.deleteExternalReport(bookingId);
+      await reload();
+    });
+  }
+
+  async function allowReupload() {
+    await run(null, async () => {
+      await api.setUploadSwitch(ins!.unit_id, true);
+      await reload();
     });
   }
 
@@ -248,6 +276,35 @@ export default function InspectionScreen() {
             </View>
           </Card>
         )}
+        <Card title="外部報告 PDF">
+          {ins.external_report ? (
+            <>
+              <Text style={localStyles.meta}>📄 {ins.external_report.filename}（{(ins.external_report.size / 1024 / 1024).toFixed(1)} MB）</Text>
+              <Text style={localStyles.meta}>
+                {ins.external_report.uploaded_at.replace('T', ' ').slice(0, 16)} 上傳{ins.external_report.uploaded_by ? `｜${ins.external_report.uploaded_by}` : ''}
+              </Text>
+              <View style={{ gap: 8, marginTop: 8 }}>
+                <Button label="開啟外部報告" variant="outline" onPress={() => Linking.openURL(ins.external_report!.url)} />
+                {can('report.manage') && ins.upload_enabled && <Button label="上傳新版本（取代）" onPress={uploadExternal} />}
+                {can('report.manage') && !ins.upload_enabled && (
+                  <Text style={[localStyles.link, { textAlign: 'center' }]} onPress={allowReupload}>開啟上傳開關（允許重新上傳）</Text>
+                )}
+                {can('report.manage') && (
+                  <Text style={[localStyles.link, { textAlign: 'center', color: colors.danger }]} onPress={deleteExternal}>刪除外部報告</Text>
+                )}
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={localStyles.meta}>代驗屋公司或其他單位提供的報告（單一 PDF、30MB 以內）。上傳後會自動關閉此戶的上傳開關，寄送報告時一併附上。</Text>
+              {can('report.manage') && (
+                ins.upload_enabled
+                  ? <View style={{ marginTop: 8 }}><Button label="上傳外部報告 PDF" variant="outline" onPress={uploadExternal} /></View>
+                  : <Text style={[localStyles.link, { textAlign: 'center', marginTop: 8 }]} onPress={allowReupload}>上傳開關已關閉，點此開啟</Text>
+              )}
+            </>
+          )}
+        </Card>
         <View style={{ height: 30 }} />
       </ScrollView>
 

@@ -547,6 +547,7 @@ class InspectionCategoryBlock(BaseModel):
 
 class InspectionOut(BaseModel):
     booking_id: int
+    unit_id: int
     project_name: str
     unit_no: str
     place: str
@@ -566,6 +567,8 @@ class InspectionOut(BaseModel):
     sent_at: datetime | None
     sent_to: str | None
     default_email: str | None  # 寄送報告預設的收件人（預約聯絡 Email，否則屋主 Email）
+    external_report: "ExternalReportOut | None" = None  # 上傳的外部報告 PDF
+    upload_enabled: bool = True  # 該戶的報告上傳開關（上傳後自動關閉）
     checked: int
     total: int
     fail_count: int
@@ -596,3 +599,42 @@ class ReportSendIn(BaseModel):
 class ReportLinkOut(BaseModel):
     url: str
     filename: str
+
+
+# --- 外部報告、報告追蹤、備份 ---------------------------------------------
+class ExternalReportOut(BaseModel):
+    filename: str
+    size: int
+    uploaded_at: datetime
+    uploaded_by: str | None
+    url: str
+
+
+class UploadSwitchIn(BaseModel):
+    enabled: bool
+
+
+class OverdueOut(BaseModel):
+    booking_id: int
+    project_name: str
+    unit_no: str
+    date: date
+    start_time: time
+    days: int
+    inspection_status: str
+    contact_name: str
+    contact_phone: str
+    reminded: list[int]
+
+
+class ReminderRunOut(BaseModel):
+    sent: int
+    day7: list[str]
+    day14: list[str]
+    error: str | None = None
+
+
+class BackupRunOut(BaseModel):
+    database: str | None
+    files_copied: int
+    backup_dir: str
