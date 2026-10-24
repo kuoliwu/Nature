@@ -1,13 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from app import models  # noqa: F401  確保所有 Model 已註冊
-from app.config import settings
+from app.config import BASE_DIR, settings
 from app.database import Base, add_missing_columns, engine, is_db_initialized
-from app.services.scheduler import start_scheduler, stop_scheduler
 from app.routers import (
     auth,
     authorizations,
@@ -21,6 +20,7 @@ from app.routers import (
     system,
     users,
 )
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 STORAGE_SUBDIRS = [
     "signatures", "authorizations", "reports", "attachments", "form_uploads", "outbox", "templates", "inspections",
@@ -51,9 +51,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+WEBAPP_DIR = BASE_DIR / "webapp"  # mobile 執行 npm run build:web 產生
+
+
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse("/docs")
+    # 有電腦版網頁時打開 APP，否則到 API 文件
+    return RedirectResponse("/app/" if WEBAPP_DIR.is_dir() else "/docs")
+
+
+@app.get("/app", include_in_schema=False)
+@app.get("/app/{path:path}", include_in_schema=False)
+def webapp(path: str = ""):
+    """電腦版（網頁版 APP）。實體檔案直接回傳；其他路徑（APP 內的頁面）回傳 index.html"""
+    if not WEBAPP_DIR.is_dir():
+        raise HTTPException(404, "尚未建置網頁版：請在 mobile 資料夾執行 npm run build:web")
+    target = (WEBAPP_DIR / path).resolve()
+    if path and target.is_file() and WEBAPP_DIR.resolve() in target.parents:
+        return FileResponse(target)
+    return FileResponse(WEBAPP_DIR / "index.html")
 
 
 app.include_router(system.router)

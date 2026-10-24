@@ -41,6 +41,11 @@ export function suggestHostForWeb(pageHostname: string | null | undefined): stri
   return pageHostname ? `${pageHostname}:${DEFAULT_PORT}` : null;
 }
 
+/** 由後端提供的電腦版（網址為 http://主機:8000/app/...）：後端就是網頁本身的主機 */
+export function hostWhenServedByBackend(loc: { host: string; pathname: string } | null | undefined): string | null {
+  return loc && (loc.pathname === '/app' || loc.pathname.startsWith('/app/')) ? loc.host : null;
+}
+
 export function suggestHostFromDevServer(hostUri: string | null | undefined): string | null {
   const ip = hostUri?.split(':')[0];
   return ip && /^[\d.]+$/.test(ip) ? `${ip}:${DEFAULT_PORT}` : null;

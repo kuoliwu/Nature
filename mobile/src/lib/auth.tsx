@@ -1,8 +1,9 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { api, ApiError, configureApi, LoginOut, User } from './api';
 import { loadSession, loadSettings, saveSession, saveSettings, SavedSettings } from './settings';
-import { normalizeBaseUrl } from './url';
+import { hostWhenServedByBackend, normalizeBaseUrl } from './url';
 
 type AuthContextValue = {
   ready: boolean;
@@ -32,6 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       const [settings, session] = await Promise.all([loadSettings(), loadSession()]);
+      // 電腦版由後端提供時，主機就是網頁本身，不用另外設定
+      const served = Platform.OS === 'web' ? hostWhenServedByBackend(window.location) : null;
+      if (served && !settings.host) {
+        settings.host = served;
+        await saveSettings(settings);
+      }
       setServer(settings);
       configureApi({ baseUrl: normalizeBaseUrl(settings.host) ?? '', onUnauthorized: () => void signOut() });
       if (session) {

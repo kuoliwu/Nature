@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { normalizeBaseUrl, suggestHostForWeb, suggestHostFromDevServer } from '../src/lib/url.ts';
+import { hostWhenServedByBackend, normalizeBaseUrl, suggestHostForWeb, suggestHostFromDevServer } from '../src/lib/url.ts';
 
 test('只填 IP 時補上 http 與預設 port 8000', () => {
   assert.equal(normalizeBaseUrl('192.168.68.109'), 'http://192.168.68.109:8000');
@@ -37,4 +37,9 @@ test('從開發伺服器位址建議後端位址', () => {
 test('網頁版建議用網頁本身的主機', () => {
   assert.equal(suggestHostForWeb('localhost'), 'localhost:8000');
   assert.equal(suggestHostForWeb(''), null);
+});
+
+test('由後端提供的電腦版自動使用網頁本身的主機', () => {
+  assert.equal(hostWhenServedByBackend({ host: 'localhost:8000', pathname: '/app/inspections' }), 'localhost:8000');
+  assert.equal(hostWhenServedByBackend({ host: 'localhost:8081', pathname: '/inspections' }), null);
 });

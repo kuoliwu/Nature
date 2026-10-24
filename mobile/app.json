@@ -15,7 +15,8 @@
           "NSAllowsLocalNetworking": true
         },
         "NSLocalNetworkUsageDescription": "需要連線到區域網路上的本地主機以管理預約資料庫"
-      }
+      },
+      "bundleIdentifier": "com.servicehopo.inspection"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +25,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.servicehopo.inspection"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -52,7 +54,8 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true
+      "typedRoutes": true,
+      "baseUrl": "/app"
     },
     "owner": "service.hopo",
     "extra": {

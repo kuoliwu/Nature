@@ -518,6 +518,58 @@ https://xxxx.trycloudflare.com/authorize/5Mc5JW8Wvm0w7iB88GzhKNim697hF71M
 
 ---
 
+## 10. 上線部署（M6）
+
+### 電腦版（不需要 Expo）
+
+```bash
+cd ~/stock/nature/nature/mobile && npm run build:web     # 程式有更新時重新執行一次
+```
+
+產生的網頁放在 `backend/webapp/`，之後只要後端在跑，瀏覽器開 **`http://localhost:8000/app`** 就能用（主機位址自動設定）。
+同一個 Wi-Fi 的其他電腦也可以開 `http://192.168.68.109:8000/app`。
+
+### 開機自動啟動後端
+
+在 Windows PowerShell（一般權限即可）執行一次：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File \\wsl.localhost\Ubuntu-24.04\home\b9211\stock\nature\nature\deploy\windows\install-autostart.ps1
+Start-ScheduledTask -TaskName InspectionServer     # 立即啟動（之後每次登入 Windows 會自動啟動）
+```
+
+- 後端在背景執行，沒有視窗；日誌在 `backend/logs/server.log`。
+- 手動在終端機執行 `python run.py` 時，如果背景已經在跑，會提示 port 已被占用，屬正常。
+- 移除自動啟動：執行同資料夾的 `uninstall-autostart.ps1`。
+- 電腦請設定**不要自動睡眠**（設定 → 系統 → 電源），否則睡眠期間外部無法預約。
+
+### 每日備份
+
+- 每天 03:30 自動備份：資料庫（保留 30 天）＋ 照片、簽名、報告等檔案。
+- 預設存在 `backend/backups/`。**強烈建議**在 `.env` 改到另一顆硬碟或雲端同步資料夾，電腦硬碟壞掉才救得回來：
+  ```ini
+  BACKUP_DIR=/mnt/c/Users/b9211/OneDrive/驗屋系統備份
+  ```
+- 「我的帳號」→「立即備份」可手動備份。
+- 還原：停止後端，把 `backups/database/` 裡某一天的 `.db` 複製成 `backend/data/inspection.db`，`backups/storage/` 複製回 `backend/storage/`。
+
+### 打包手機 APP（不需要 Expo Go）
+
+使用 Expo 的雲端打包（EAS Build，帳號 `service.hopo`）：
+
+```bash
+cd ~/stock/nature/nature/mobile
+npx eas-cli@latest build --platform android --profile preview    # Android APK，可直接安裝
+npx eas-cli@latest build --platform ios --profile preview        # iPhone / iPad（需 Apple 開發者帳號 US$99／年）
+```
+
+- 完成後 Expo 網站會提供下載連結與 QR code，管理員手機掃描即可安裝。
+- 正式上架 Google Play / App Store 用 `--profile production`，並執行 `npx eas-cli@latest submit`。
+- APP 的套件名稱為 `com.servicehopo.inspection`（`mobile/app.json`）。
+- 打包版第一次開啟要在「主機設定」輸入主機位址（固定網址或 Tailscale IP）。
+
+---
+
 ## 疑難排解
 
 | 狀況 | 原因 / 解法 |

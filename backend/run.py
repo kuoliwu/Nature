@@ -131,6 +131,8 @@ def main() -> None:
     settings.public_url_file.unlink(missing_ok=True)
 
     print(f"\n  本機 API 文件       ：http://127.0.0.1:{port}/docs")
+    if (Path(__file__).parent / "webapp").is_dir():
+        print(f"  電腦版（瀏覽器）    ：http://localhost:{port}/app")
     print(f"  手機 APP（Wi-Fi）   ：http://{source_ip('8.8.8.8') or '127.0.0.1'}:{port}")
     ts = tailscale_ip()
     print(f"  手機 APP（5G）      ：http://{ts}:{port}" if ts else "  手機 APP（5G）      ：未偵測到 Tailscale")

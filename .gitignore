@@ -13,3 +13,5 @@ backend/fonts/*
 !backend/fonts/.gitkeep
 
 backend/backups/
+backend/webapp/
+backend/logs/
