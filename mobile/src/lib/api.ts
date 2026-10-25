@@ -71,6 +71,18 @@ export type UnitImportResult = {
   errors: { row: number; message: string }[];
 };
 
+// 通用 Excel / CSV 匯出匯入（後端 /sheets/{name}）
+export type SheetName = 'projects' | 'checklist' | 'slots' | 'bookings' | 'users' | 'results';
+export type SheetParams = { project_id?: number; service?: ChecklistService; batch_id?: number };
+
+export function sheetQuery(params: SheetParams & { format?: 'xlsx' | 'csv'; dry_run?: boolean }): string {
+  const q = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+    .join('&');
+  return q ? `?${q}` : '';
+}
+
 export type UnitInput = {
   unit_no: string;
   building?: string | null;
@@ -396,6 +408,10 @@ export const api = {
       `/projects/${projectId}/units/export-link?format=${format}`,
       { method: 'POST' },
     ),
+  sheetExportLink: (name: SheetName, params: SheetParams, format: 'xlsx' | 'csv') =>
+    request<{ url: string; filename: string; expires_at: string }>(`/sheets/${name}/export-link${sheetQuery({ ...params, format })}`, {
+      method: 'POST',
+    }),
   updateUnit: (id: number, body: Partial<UnitInput>) => request<Unit>(`/units/${id}`, { method: 'PATCH', body }),
   deleteUnit: (id: number) => request<null>(`/units/${id}`, { method: 'DELETE' }),
 

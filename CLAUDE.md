@@ -19,6 +19,7 @@
 | 3 驗屋 | APP 逐點 合格/不合格/不適用、備註、拍照、屋主 APP 簽名 → 鎖定 | M4 |
 | 4 報告 | 預覽報告 PDF → Review OK → 寄送 PDF+感謝信；外部報告 PDF 上傳（≤30MB、上傳後關閉開關）；7/14 天未完成提醒 | M4、M5 |
 | 上線 | 每日備份、電腦版由後端提供 `/app`、Windows 開機自動啟動、EAS 打包設定 | M5、M6 |
+| 之後 | PWA（主畫面圖示 H）；建案內**四階段**：建立系統／預約參觀／預約驗屋／預約健檢；建案儀表板＋主管會議報表（互動 HTML、Excel 原生圖表）；全部資料 Excel/CSV 匯出匯入 | — |
 
 另有早期的「委託代驗線上授權」（屋主+受託人簽名合成授權書 PDF，`routers/authorizations.py`，用 `scripts/owner_link.py` 產生屋主連結），與 M3 預約流程獨立。
 
@@ -32,18 +33,22 @@ backend/                FastAPI + SQLAlchemy 2 + SQLite（Python 3.12，venv 在
   app/main.py           管理用 app；lifespan：自動補資料表/欄位、啟動排程；/app 提供電腦版
   app/public_main.py    對外 app：只有 authorizations.public、booking.public
   app/models.py         全部資料表（25 張）
-  app/routers/          auth users projects batches checklist booking inspections reports downloads authorizations system
+  app/routers/          auth users projects batches checklist booking inspections reports downloads authorizations system sheets
   app/services/         auth(JWT/權限/下載 token) booking slots reports scheduler backup mailer pdf report_pdf
                         inspection_media units_excel signature links security
+                        dashboard（儀表板數字）project_report（報表 HTML/xlsx）sheets（Excel 匯出匯入框架）sheet_datasets（各資料定義）
   app/templates/        sign.html（授權簽名）、book.html（屋主預約頁）—純 HTML+JS，__CONFIG__ 由後端注入
+                        project_report.html（主管會議互動報表，SVG 圖表，__DATA__ 注入、< 已跳脫）
   scripts/              create_demo_booking owner_link show_outbox reset_admin start_server.sh
   tests/                pytest，test_step*.py 依階段；conftest 用暫存 DB、不讀 .env
 mobile/                 Expo SDK 58 + expo-router（routes 在 src/app），React 19.3、RN 0.88、TS 6
   src/app/_layout.tsx   AuthProvider；Stack.Protected：登入後 (app)，未登入 login/setup；connect 都可進
-  src/app/(app)/(tabs)/ 建案 index、驗屋 inspections、人員 users、我的帳號 account
+  src/app/(app)/(tabs)/ 建案 index、行程 inspections、人員 users、我的帳號 account
   src/app/(app)/        project/[id]/…、batch/[id]/{index,invites,settings}、inspection/[bookingId]/{index,sign}、overdue、user/[id]
   src/lib/              api.ts（型別+全部 API，純 TS 可在 node 測）auth.tsx settings.ts files.ts url.ts dates.ts units.ts useLoad.ts labels.ts dialogs.ts
   src/components/       ui.tsx（Screen/Card/Field/Button/Message/ListRow…）overlays.tsx（PromptModal/ActionSheet）pickers.tsx SignaturePad.tsx
+                        charts.tsx（純 View 圖表）ProjectDashboard.tsx SheetTransfer.tsx（useSheetTransfer：Excel 匯出匯入選單＋狀態）
+  public/               index.html（PWA 標籤）manifest.json icons/；scripts/make_icons.py 產生全部圖示
   tests/*.test.mjs      node --test（直接 import .ts 純函式）
 deploy/windows/         install/uninstall-autostart.ps1（UTF-8 BOM！）
 ```
@@ -54,11 +59,12 @@ deploy/windows/         install/uninstall-autostart.ps1（UTF-8 BOM！）
 # 後端
 cd backend && source .venv/bin/activate
 python run.py [--tunnel]          # --tunnel：Cloudflare 快速通道；使用者已改用 Tailscale Funnel（PUBLIC_BASE_URL）
-timeout 300 .venv/bin/python -m pytest -q     # 目前 77 passed
+timeout 300 .venv/bin/python -m pytest -q     # 目前 94 passed
 # APP
 cd mobile
 npm run wifi | npm run 5g [-- --clear]        # Expo 開發伺服器（QR code 用正確 IP）
-npx tsc --noEmit && npm test                  # 型別 + 單元測試（12 passed）
+npx tsc --noEmit && npm test                  # 型別 + 單元測試（13 passed）
+# 不要跑 npx expo lint：專案沒有 ESLint，它會自動安裝並改 package.json
 npx expo export --platform android --platform ios --output-dir <tmp>   # 打包檢查
 npm run build:web                             # 電腦版 → backend/webapp（baseUrl=/app）
 npx -y expo-doctor
@@ -71,11 +77,14 @@ npx -y expo-doctor
 - **權限**：`PERMISSIONS`（models.py）＝ project.manage、batch.manage、booking.view、booking.manage、inspection.edit、report.manage、user.manage；super_admin 全有。後端用 `require_permission` / `require_any_permission`；APP 用 `useAuth().can()`。
 - **X-Admin-Key**（`.env` ADMIN_INIT_KEY）只用於 `/init-db`、`/db/status`、`/auth/setup`（建立第一位管理者）。其他一律 JWT。
 - **改密碼/停用即踢出**：JWT 帶 `pwd`（密碼雜湊尾碼）。登入失敗 5 次鎖 5 分鐘（記憶體）。
-- **下載連結**：瀏覽器/`<Image>` 無法帶 header → `create_download_token(kind,id)` 產生短效 URL，`routers/downloads.py` 依 kind 回檔（units 匯出、photo、inspection_signature、inspection_report、external_report）。只在 8000，不經對外通道。
+- **下載連結**：瀏覽器/`<Image>` 無法帶 header → `create_download_token(kind,id)` 產生短效 URL，`routers/downloads.py` 依 kind 回檔（units、project_report、sheet、photo、inspection_signature、inspection_report、external_report）。權限在產生連結時檢查。只在 8000，不經對外通道。
 - **資料庫升級**：沒有 Alembic。新增欄位 → `add_missing_columns()` 啟動時自動 `ALTER TABLE ADD COLUMN`；**新欄位必須 nullable 或有 server_default**（布林用 `server_default=text("1")`）。新資料表由 `create_all` 建立。改型別/約束需自己寫遷移。
 - **狀態機**：Booking `booked → completed`（簽名）／`cancelled`；`ACTIVE_STATUSES=(booked, completed)` 佔名額；同戶同批次一筆有效預約（partial unique index）。Inspection `in_progress → signed →（Review OK）approved → sent`；signed 才能 reopen；approved 未寄可 unapprove。報告完成 ＝ 有外部報告或 inspection=sent。
 - **不超賣**：`services/booking.book()` 先 insert/flush 再數該格有效預約，超過就 rollback（SQLite 寫入序列化）。
-- **檢查清單**：`inspection_categories.project_id` NULL＝公司範本；建案建立時 `copy_template_to_project`；已有結果的檢查點不能刪只能停用；驗屋畫面保留「已停用但有結果」的點。
+- **四階段 / 服務**：`ServiceType` = visit（參觀）/ inspection（驗屋）/ health_check（健檢）；批次各屬一種服務。`CHECKLIST_SERVICES=("inspection","health_check")`。參觀沒有清單、報告、提醒：`POST /bookings/{id}/checkin`（`Booking.checked_in_at`）＝完成。
+- **檢查清單**：`inspection_categories.project_id` NULL＝公司範本；建案的清單以 `service_type` 分驗屋／健檢兩份（`ensure_project_checklist(db, project, service)`，舊資料由 `migrate_checklist_services` 補成 inspection）；建案建立時兩份都 `copy_template_to_project`；已有結果的檢查點不能刪只能停用；驗屋畫面保留「已停用但有結果」的點（也保留舊健檢預約在驗屋清單上的結果）。
+- **儀表板 / 報表**：`services/dashboard.build_dashboard` 是唯一數字來源（APP 儀表板、HTML、xlsx 共用）；住戶在每個階段的狀態互斥：completed > booked > invited > not_invited。色票經 dataviz 驗證，APP `charts.tsx` 與 `project_report.py` 同一組。
+- **Excel 匯出匯入**（`/sheets/{name}/export-link`、`/sheets/{name}/import?dry_run=`；name = projects/checklist/slots/bookings/users/results）：`services/sheets.py` 框架（Col 型別轉換、說明工作表、CSV BOM、Big5）；每種資料在 `sheet_datasets.py` 定義 export_rows/apply/權限/範圍（global、project_service、batch）。規則：關鍵欄位比對、檔案沒有的不刪、任何錯誤整份 rollback、**匯出後原封不動匯回必須零變動**（測試涵蓋全部 xlsx+csv）。住戶仍用較早的 `units_excel.py`。預約匯入不寄信，寫入後才檢查名額；結果匯入只在 inspection in_progress 時能改。
 - **Email**：`SMTP_HOST` 空白時寫入 `storage/outbox/*.eml`（`python -m scripts.show_outbox` 查看）；寄信放 BackgroundTasks、失敗只記 log。
 - **排程**：APScheduler（Asia/Taipei），`REMINDER_HOUR`(9) 提醒、`BACKUP_HOUR`(3):30 備份；`run.py` 一個程序兩個 app 共用 lifespan → `start_scheduler` 有旗標只啟動一次。測試設 `SCHEDULER_ENABLED=false`。
 - **PDF**：ReportLab + pypdf，字型 `contract_font()`（`PDF_FONT_PATH` → backend/fonts/*.ttf → Windows 標楷體 kaiu.ttf → MSung-Light）。報告用 platypus、`wordWrap='CJK'`；`_p()` 會跳脫 `<>`，要用顏色標記時直接用 `Paragraph`。
@@ -106,6 +115,6 @@ npx -y expo-doctor
 
 - 後端：pytest；需要真實流程時用 scratchpad 的暫存 DB 起 uvicorn（`APP_ENV_FILE=/nonexistent DATABASE_URL=sqlite:///<tmp> STORAGE_DIR=<tmp> ADMIN_INIT_KEY=k JWT_SECRET_FILE=<tmp> SCHEDULER_ENABLED=false`），**不要動使用者的 `backend/data/inspection.db`**。
 - APP 的 API 呼叫：node 直接 `import mobile/src/lib/api.ts` 打暫存後端。
-- 畫面：`npx expo export --platform web` → 小型 SPA 靜態伺服器 → scratchpad 裡裝的 `puppeteer-core` + `/usr/bin/google-chrome` headless，localStorage 預設 `server.host`、`auth.token`、`auth.user`。
+- 畫面：`npx expo export --platform web --output-dir <scratch>`（**不要**輸出到 backend/webapp，使用者的後端正在用）→ 用小 python 包裝把 `app.main.WEBAPP_DIR` 指到 scratch 再起 uvicorn，或小型 SPA 靜態伺服器 → scratchpad 裡裝的 `puppeteer-core` + `/usr/bin/google-chrome` headless，localStorage 預設 `server.host`、`auth.token`、`auth.user`。headless 下 `Linking.openURL` 不會觸發 targetcreated → 改寫 `window.open` 記下網址；檔案選擇用 `page.waitForFileChooser()`，`window.confirm` 用 `page.on('dialog')`。
 - PDF：`pypdfium2`（scratchpad venv）轉圖片後目視檢查。
 - 手機原生行為（相機、手指簽名、iOS 分享/Modal）無法在這裡測 → 明確告知使用者需實機確認。

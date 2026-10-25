@@ -31,6 +31,10 @@ def download(token: str, db: Session = Depends(get_db)):
         if project is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "找不到建案")
         return project_report_response(db, project, payload["fmt"])
+    if payload.get("kind") == "sheet":
+        from app.routers.sheets import sheet_response
+
+        return sheet_response(db, payload["name"], payload, payload["fmt"])
     if payload.get("kind") == "photo":
         photo = db.get(InspectionPhoto, payload["id"])
         if photo is None:

@@ -3,6 +3,7 @@ import { useLayoutEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, PromptModal } from '@/components/overlays';
+import { useSheetTransfer } from '@/components/SheetTransfer';
 import { Card, HeaderButton, ListRow, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, BatchDetail, Slot } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -21,6 +22,7 @@ export default function BatchScreen() {
   const [selected, setSelected] = useState<{ date: string; slotId: number } | null>(null);
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const excel = useSheetTransfer('slots', { batch_id: id }, { label: '時段', unit: '個時段', canImport: editable, onImported: reload });
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -88,6 +90,7 @@ export default function BatchScreen() {
           {editable && <Text style={localStyles.hint}>點時段可關閉 / 開放或調整名額；灰色為已關閉。</Text>}
         </Card>
         {error && <Message kind="error" text={error} />}
+        {excel.status}
         {canSeeBookings && (
           <ListRow
             title="📨 寄送邀請／預約名單"
@@ -191,6 +194,7 @@ export default function BatchScreen() {
               }),
           },
           { label: '修改名稱', onPress: () => setRenaming(true) },
+          ...excel.options,
           {
             label: batch.is_active ? '停用（客戶看不到）' : '重新啟用',
             onPress: () => run(async () => {

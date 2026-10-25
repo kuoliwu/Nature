@@ -17,6 +17,7 @@ from app.routers import (
     inspections,
     projects,
     reports,
+    sheets,
     system,
     users,
 )
@@ -87,5 +88,6 @@ app.include_router(booking.admin)
 app.include_router(booking.public)
 app.include_router(inspections.router)
 app.include_router(reports.router)
+app.include_router(sheets.router)
 app.include_router(authorizations.public)
 app.include_router(authorizations.admin)

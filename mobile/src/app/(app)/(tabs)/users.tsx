@@ -2,21 +2,25 @@ import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useCallback, useLayoutEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
-import { Message, MAX_WIDTH, colors } from '@/components/ui';
+import { ActionSheet } from '@/components/overlays';
+import { useSheetTransfer } from '@/components/SheetTransfer';
+import { HeaderButton, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, User } from '@/lib/api';
 
 export default function UsersScreen() {
   const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [menu, setMenu] = useState(false);
   const navigation = useNavigation();
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable onPress={() => router.push('/user/new')} hitSlop={12} style={localStyles.headerButton}>
-          <Text style={localStyles.headerButtonText}>＋ 新增</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row' }}>
+          <HeaderButton label="Excel" onPress={() => setMenu(true)} />
+          <HeaderButton label="＋ 新增" onPress={() => router.push('/user/new')} />
+        </View>
       ),
     });
   }, [navigation]);
@@ -35,8 +39,10 @@ export default function UsersScreen() {
       void load();
     }, [load]),
   );
+  const sheet = useSheetTransfer('users', {}, { label: '人員', unit: '人', canImport: true, onImported: load });
 
   return (
+    <>
     <FlatList
       contentInsetAdjustmentBehavior="automatic" // iOS 半透明標題列時避免內容被擋住
       style={localStyles.list}
@@ -53,7 +59,14 @@ export default function UsersScreen() {
           }}
         />
       }
-      ListHeaderComponent={error ? <Message kind="error" text={error} /> : undefined}
+      ListHeaderComponent={
+        error || sheet.status ? (
+          <View style={{ gap: 8 }}>
+            {error && <Message kind="error" text={error} />}
+            {sheet.status}
+          </View>
+        ) : undefined
+      }
       renderItem={({ item }) => (
         <Pressable
           onPress={() => router.push({ pathname: '/user/[id]', params: { id: String(item.id) } })}
@@ -74,6 +87,8 @@ export default function UsersScreen() {
         </Pressable>
       )}
     />
+    <ActionSheet visible={menu} title="人員帳號 Excel" options={sheet.options} onClose={() => setMenu(false)} />
+    </>
   );
 }
 
@@ -96,6 +111,4 @@ const localStyles = StyleSheet.create({
   badges: { alignItems: 'flex-end', gap: 4 },
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 12, fontWeight: '600' },
-  headerButton: { paddingHorizontal: 16 },
-  headerButtonText: { color: colors.primary, fontSize: 16, fontWeight: '600' },
 });

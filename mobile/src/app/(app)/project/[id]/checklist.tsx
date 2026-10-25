@@ -3,7 +3,8 @@ import { useLayoutEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, PromptModal, SheetOption } from '@/components/overlays';
-import { Button, Card, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
+import { useSheetTransfer } from '@/components/SheetTransfer';
+import { Button, Card, HeaderButton, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, ChecklistCategory, ChecklistItem, ChecklistService, CheckPoint } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { confirm, errorText } from '@/lib/dialogs';
@@ -19,16 +20,27 @@ export default function ChecklistScreen() {
   const { can } = useAuth();
   const editable = can('project.manage');
   const navigation = useNavigation();
-  const { data: categories, setData, error, setError, refresh, refreshing } = useLoad(
+  const { data: categories, setData, error, setError, reload, refresh, refreshing } = useLoad(
     () => api.checklist(projectId, service),
     [projectId, service],
   );
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [sheet, setSheet] = useState<Sheet | null>(null);
+  const [excelMenu, setExcelMenu] = useState(false);
+  const excel = useSheetTransfer('checklist', { project_id: projectId, service }, {
+    label: '檢查清單',
+    unit: '個檢查點',
+    canImport: editable,
+    onImported: reload,
+  });
+  const title = service === 'health_check' ? '健檢檢查清單' : '驗屋檢查清單';
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: service === 'health_check' ? '健檢檢查清單' : '驗屋檢查清單' });
-  }, [navigation, service]);
+    navigation.setOptions({
+      title,
+      headerRight: () => <HeaderButton label="Excel" onPress={() => setExcelMenu(true)} />,
+    });
+  }, [navigation, title]);
 
   if (!categories) return error ? <Message kind="error" text={error} /> : <Loading />;
 
@@ -121,6 +133,7 @@ export default function ChecklistScreen() {
           }
         />
         {error && <Message kind="error" text={error} />}
+        {excel.status}
 
         {categories.map((c) => (
           <Card key={c.id} style={!c.is_active ? localStyles.inactiveCard : undefined}>
@@ -174,6 +187,7 @@ export default function ChecklistScreen() {
       </ScrollView>
 
       <ActionSheet visible={!!sheet} title={sheet?.title} options={sheet?.options ?? []} onClose={() => setSheet(null)} />
+      <ActionSheet visible={excelMenu} title={`${title} Excel`} options={excel.options} onClose={() => setExcelMenu(false)} />
       <PromptModal
         visible={!!prompt}
         title={prompt?.title ?? ''}

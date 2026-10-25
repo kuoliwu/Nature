@@ -3,7 +3,8 @@ import { useLayoutEffect, useMemo, useState } from 'react';
 import { FlatList, Linking, Platform, Pressable, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, SheetOption } from '@/components/overlays';
-import { Button, ListRow, Message, MAX_WIDTH, colors } from '@/components/ui';
+import { useSheetTransfer } from '@/components/SheetTransfer';
+import { Button, HeaderButton, ListRow, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, InviteStatus } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { dayLabel, shortTime } from '@/lib/dates';
@@ -37,9 +38,26 @@ export default function InvitesScreen() {
   const [sheet, setSheet] = useState<{ title: string; options: SheetOption[] } | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [sending, setSending] = useState(false);
+  const [excelMenu, setExcelMenu] = useState(false);
+  const { data: batch } = useLoad(() => api.batch(batchId), [batchId]);
+  const hasChecklist = !!batch && batch.service_type !== 'visit';
+  const bookingsExcel = useSheetTransfer('bookings', { batch_id: batchId }, {
+    label: '預約名單',
+    unit: '戶',
+    canImport: canManage,
+    onImported: reload,
+  });
+  const resultsExcel = useSheetTransfer('results', { batch_id: batchId }, {
+    label: '檢查結果',
+    unit: '個檢查點',
+    canImport: can('inspection.edit'),
+  });
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: '預約邀請與名單' });
+    navigation.setOptions({
+      title: '預約邀請與名單',
+      headerRight: () => <HeaderButton label="Excel" onPress={() => setExcelMenu(true)} />,
+    });
   }, [navigation]);
 
   const counts = useMemo(() => {
@@ -166,6 +184,8 @@ export default function InvitesScreen() {
             )}
             {error && <Message kind="error" text={error} />}
             {notice && <Message kind={notice.ok ? 'ok' : 'error'} text={notice.text} />}
+            {bookingsExcel.status}
+            {resultsExcel.status}
             <View style={localStyles.filters}>
               {FILTERS.map((f) => (
                 <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[localStyles.chip, filter === f.key && localStyles.chipOn]}>
@@ -185,6 +205,12 @@ export default function InvitesScreen() {
         )}
       />
       <ActionSheet visible={!!sheet} title={sheet?.title} options={sheet?.options ?? []} onClose={() => setSheet(null)} />
+      <ActionSheet
+        visible={excelMenu}
+        title="預約名單／檢查結果 Excel"
+        options={[...bookingsExcel.options, ...(hasChecklist ? resultsExcel.options : [])]}
+        onClose={() => setExcelMenu(false)}
+      />
     </View>
   );
 }
