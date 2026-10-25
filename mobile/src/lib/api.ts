@@ -222,6 +222,30 @@ export type OverdueItem = {
   reminded: number[];
 };
 
+export type StageKey = 'completed' | 'booked' | 'invited' | 'not_invited';
+export type Dashboard = {
+  project: { id: number; name: string; address: string };
+  generated_at: string;
+  units: { total: number; with_email: number; without_email: number };
+  stage_labels: Record<StageKey, string>;
+  phases: {
+    service: ServiceType;
+    label: string;
+    batches: number;
+    slots: number;
+    open_slots: number;
+    capacity: number;
+    bookings: number;
+    stages: Record<StageKey, number>;
+    reports_sent: number | null;
+    has_reports: boolean;
+  }[];
+  daily: ({ date: string } & Record<ServiceType, number>)[];
+  results: Record<ChecklistService, { pass: number; fail: number; na: number }>;
+  top_fails: { service: ChecklistService; service_label: string; label: string; count: number }[];
+  overdue_reports: number;
+};
+
 export type CheckPoint = { id: number; name: string; is_active: boolean; sort_order: number };
 export type ChecklistItem = CheckPoint & { check_points: CheckPoint[] };
 export type ChecklistCategory = CheckPoint & { items: ChecklistItem[] };
@@ -347,6 +371,10 @@ export const api = {
   updateProject: (id: number, body: Partial<ProjectInput>) =>
     request<Project>(`/projects/${id}`, { method: 'PATCH', body }),
   deleteProject: (id: number) => request<null>(`/projects/${id}`, { method: 'DELETE' }),
+
+  dashboard: (projectId: number) => request<Dashboard>(`/projects/${projectId}/dashboard`),
+  reportExportLink: (projectId: number, format: 'html' | 'xlsx') =>
+    request<{ url: string; filename: string }>(`/projects/${projectId}/report-export-link?format=${format}`, { method: 'POST' }),
 
   // 住戶
   units: (projectId: number) => request<Unit[]>(`/projects/${projectId}/units`),

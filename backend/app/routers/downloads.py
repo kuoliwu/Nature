@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import Booking, Inspection, InspectionPhoto, Project, Report
-from app.routers.projects import units_export_response
+from app.routers.projects import project_report_response, units_export_response
 from app.services.auth import read_download_token
 
 router = APIRouter(tags=["下載"])
@@ -26,6 +26,11 @@ def download(token: str, db: Session = Depends(get_db)):
         if project is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "找不到建案")
         return units_export_response(db, project, payload["fmt"])
+    if payload.get("kind") == "project_report":
+        project = db.get(Project, payload["project_id"])
+        if project is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "找不到建案")
+        return project_report_response(db, project, payload["fmt"])
     if payload.get("kind") == "photo":
         photo = db.get(InspectionPhoto, payload["id"])
         if photo is None:

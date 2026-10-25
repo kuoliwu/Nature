@@ -5,6 +5,7 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { Card, HeaderButton, ListRow, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { ProjectDashboard } from '@/components/ProjectDashboard';
 import { PHASES } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
@@ -13,6 +14,7 @@ export default function ProjectScreen() {
   const { can } = useAuth();
   const navigation = useNavigation();
   const { data: project, error, refresh, refreshing } = useLoad(() => api.project(id), [id]);
+  const { data: dashboard, refresh: refreshDashboard } = useLoad(() => api.dashboard(id).catch(() => null), [id]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -38,8 +40,10 @@ export default function ProjectScreen() {
       contentInsetAdjustmentBehavior="automatic" // iOS 半透明標題列時避免內容被擋住
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={localStyles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void Promise.all([refresh(), refreshDashboard()])} />}
     >
+      {dashboard && <ProjectDashboard data={dashboard} projectId={id} />}
+
       <Card title="建案基本資料">
         <Info label="案名" value={project.name} />
         <Info label="電話" value={project.phone} />

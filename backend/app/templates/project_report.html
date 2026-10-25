@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>建案報表</title>
+<style>
+  /* 色票：dataviz 參考色（已驗證色盲可辨識）；淺色 / 深色各自一組 */
+  .viz-root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface-1: #fcfcfb; --text-primary: #0b0b0b; --text-secondary: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+    --stage-completed: #1c5cab; --stage-booked: #3987e5; --stage-invited: #86b6ef; --stage-none: #cde2fb;
+    --good: #0ca30c; --critical: #d03b3b; --neutral: #c3c2b7;
+    --accent: #1d4ed8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface-1: #1a1a19; --text-primary: #f0efec; --text-secondary: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+      --stage-completed: #86b6ef; --stage-booked: #3987e5; --stage-invited: #184f95; --stage-none: #2c2c2a;
+      --neutral: #6b6a66; --accent: #86b6ef;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface-1: #1a1a19; --text-primary: #f0efec; --text-secondary: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+    --stage-completed: #86b6ef; --stage-booked: #3987e5; --stage-invited: #184f95; --stage-none: #2c2c2a;
+    --neutral: #6b6a66; --accent: #86b6ef;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  .viz-root { background: var(--page); color: var(--text-primary); min-height: 100vh; padding: 24px 16px 48px; }
+  main { max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; }
+  h1 { font-size: 26px; margin: 0; font-weight: 700; }
+  .sub { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+  .actions { display: flex; gap: 8px; }
+  button { font: inherit; font-size: 14px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .tile, .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
+  .tile { padding: 14px 16px; }
+  .tile .label { font-size: 13px; color: var(--text-secondary); }
+  .tile .value { font-size: 30px; font-weight: 600; margin-top: 2px; }
+  .tile .note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tile .icon { font-size: 18px; margin-right: 4px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+  .card { padding: 16px 18px; min-width: 0; }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+  .card h2 { font-size: 16px; margin: 0; }
+  .card .desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+  .legend button { border: none; background: none; padding: 2px 0; display: inline-flex; align-items: center; gap: 6px; color: inherit; font-size: 12px; }
+  .legend button[aria-pressed="false"] { opacity: 0.4; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  svg { display: block; width: 100%; overflow: visible; }
+  svg text { fill: var(--text-secondary); font-size: 12px; }
+  svg .value { fill: var(--text-primary); font-size: 12px; }
+  svg .mark { cursor: pointer; }
+  svg .mark:hover, svg .mark:focus { opacity: 0.8; outline: none; }
+  .tip { position: fixed; pointer-events: none; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); display: none; z-index: 10; min-width: 140px; }
+  .tip strong { font-size: 16px; display: block; }
+  .tip .k { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--grid); text-align: left; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); font-size: 14px; padding: 16px 0; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; }
+  @media print {
+    .actions, .card-head button { display: none; }
+    .viz-root { padding: 0; background: #fff; }
+    .card, .tile { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<main>
+  <header>
+    <div>
+      <h1 id="title"></h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <div class="actions">
+      <button type="button" id="fullscreen">全螢幕簡報</button>
+      <button type="button" onclick="window.print()">列印 / 存 PDF</button>
+    </div>
+  </header>
+  <section class="kpis" id="kpis"></section>
+  <section class="card" id="card-phases"></section>
+  <div class="grid2">
+    <section class="card" id="card-daily"></section>
+    <section class="card" id="card-results"></section>
+  </div>
+  <section class="card" id="card-fails"></section>
+  <footer id="footer"></footer>
+</main>
+<div class="tip" id="tip" role="status"></div>
+</div>
+
+<script>
+const DATA = __DATA__;
+const SVG = 'http://www.w3.org/2000/svg';
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(name).trim();
+const pct = (n, t) => (t ? Math.round((n / t) * 100) + '%' : '—');
+const el = (tag, attrs = {}, text) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+const svgEl = (tag, attrs = {}) => {
+  const e = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+};
+
+// ---------- 提示框（滑鼠移上去 / 鍵盤 focus）----------
+const tip = $('tip');
+function showTip(evt, value, rows) {
+  tip.replaceChildren();
+  tip.append(el('strong', {}, value));
+  for (const [color, label] of rows) {
+    const line = el('div');
+    const key = el('span', { class: 'k' });
+    key.style.background = color;
+    line.append(key, document.createTextNode(label));
+    tip.append(line);
+  }
+  tip.style.display = 'block';
+  const r = evt.target.getBoundingClientRect();
+  const x = evt.clientX ?? r.left + r.width / 2;
+  const y = evt.clientY ?? r.top;
+  tip.style.left = Math.min(x + 14, window.innerWidth - tip.offsetWidth - 8) + 'px';
+  tip.style.top = Math.max(y - tip.offsetHeight - 10, 8) + 'px';
+}
+function bindTip(node, value, rows) {
+  node.setAttribute('tabindex', '0');
+  node.setAttribute('class', 'mark');
+  node.setAttribute('aria-label', value + ' ' + rows.map((r) => r[1]).join(' '));
+  node.addEventListener('pointermove', (e) => showTip(e, value, rows));
+  node.addEventListener('focus', (e) => showTip(e, value, rows));
+  node.addEventListener('pointerleave', () => (tip.style.display = 'none'));
+  node.addEventListener('blur', () => (tip.style.display = 'none'));
+}
+
+// ---------- 圖卡：標題 + 表格切換 + 圖例 ----------
+function card(id, title, desc, render, table, legend) {
+  const box = $(id);
+  const head = el('div', { class: 'card-head' });
+  const left = el('div');
+  left.append(el('h2', {}, title));
+  if (desc) left.append(el('div', { class: 'desc' }, desc));
+  const toggle = el('button', { type: 'button' }, '表格');
+  head.append(left, toggle);
+  const legendBox = el('div', { class: 'legend' });
+  const body = el('div');
+  box.replaceChildren(head, legendBox, body);
+  const hidden = new Set();
+  let asTable = false;
+  const draw = () => {
+    body.replaceChildren();
+    legendBox.style.display = asTable || !legend ? 'none' : 'flex';
+    if (asTable) body.append(table());
+    else render(body, hidden);
+  };
+  if (legend) {
+    for (const item of legend) {
+      const b = el('button', { type: 'button', 'aria-pressed': 'true', title: '點擊只顯示 / 隱藏此項' });
+      const sw = el('span', { class: 'swatch' });
+      sw.style.background = css(item.color);
+      b.append(sw, document.createTextNode(item.label));
+      b.addEventListener('click', () => {
+        hidden.has(item.key) ? hidden.delete(item.key) : hidden.add(item.key);
+        b.setAttribute('aria-pressed', String(!hidden.has(item.key)));
+        draw();
+      });
+      legendBox.append(b);
+    }
+  }
+  toggle.addEventListener('click', () => {
+    asTable = !asTable;
+    toggle.textContent = asTable ? '圖表' : '表格';
+    draw();
+  });
+  draw();
+  window.addEventListener('resize', () => !asTable && draw());
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+}
+
+function makeTable(headers, rows) {
+  const t = el('table');
+  const thead = el('tr');
+  headers.forEach((h, i) => thead.append(el('th', i ? { class: 'num' } : {}, h)));
+  t.append(thead);
+  for (const r of rows) {
+    const tr = el('tr');
+    r.forEach((v, i) => tr.append(el('td', i ? { class: 'num' } : {}, String(v))));
+    t.append(tr);
+  }
+  return t;
+}
+
+// ---------- 水平堆疊長條（每列一條）----------
+function stackedRows(body, rows, keys, hidden) {
+  const width = body.clientWidth || 600;
+  const labelW = 64, rowH = 24, gap = 22, barH = 20, endW = 96;  // endW：右側標籤區，不與長條重疊
+  const plotW = width - labelW - endW;
+  const svg = svgEl('svg', { viewBox: `0 0 ${width} ${rows.length * (rowH + gap)}`, role: 'img' });
+  rows.forEach((r, ri) => {
+    const y = ri * (rowH + gap);
+    const label = svgEl('text', { x: 0, y: y + 15 });
+    label.textContent = r.label;
+    svg.append(label);
+    const segs = keys.filter((k) => !hidden.has(k.key) && r.values[k.key] > 0);
+    const shownTotal = r.total;
+    let x = labelW;
+    const usable = plotW - Math.max(segs.length - 1, 0) * 2;
+    if (!shownTotal) {
+      svg.append(svgEl('rect', { x, y: y + 2, width: plotW, height: barH, rx: 4, fill: css('--stage-none') }));
+    }
+    segs.forEach((k, i) => {
+      const w = Math.max((r.values[k.key] / shownTotal) * usable, 1);
+      const first = i === 0, last = i === segs.length - 1;
+      const path = svgEl('path', { d: roundedBar(x, y + 2, w, barH, first ? 4 : 0, last ? 4 : 0), fill: css(k.color) });
+      bindTip(path, `${r.values[k.key]} 戶（${pct(r.values[k.key], shownTotal)}）`, [[css(k.color), `${r.label}・${k.label}`]]);
+      svg.append(path);
+      x += w + 2;
+    });
+    const end = svgEl('text', { x: labelW + plotW + 10, y: y + 15, class: 'value' });
+    end.textContent = r.end;
+    svg.append(end);
+  });
+  body.append(svg);
+}
+
+function roundedBar(x, y, w, h, rl, rr) {
+  rl = Math.min(rl, w / 2); rr = Math.min(rr, w / 2);
+  return `M${x + rl},${y} H${x + w - rr} Q${x + w},${y} ${x + w},${y + rr} V${y + h - rr} Q${x + w},${y + h} ${x + w - rr},${y + h} ` +
+         `H${x + rl} Q${x},${y + h} ${x},${y + h - rl} V${y + rl} Q${x},${y} ${x + rl},${y} Z`;
+}
+
+// ---------- 直條（依日期，多系列堆疊）----------
+function stackedColumns(body, days, series, hidden) {
+  if (!days.length) return body.append(el('div', { class: 'empty' }, '尚無預約'));
+  const width = body.clientWidth || 500, height = 220, axisH = 36, top = 16;
+  const shown = series.filter((s) => !hidden.has(s.key));
+  const totals = days.map((d) => shown.reduce((n, s) => n + d[s.key], 0));
+  const max = Math.max(1, ...totals);
+  const step = niceStep(max);
+  const yMax = Math.ceil(max / step) * step;
+  const left = 28, plotW = width - left - 4, plotH = height - axisH - top;
+  const band = plotW / days.length;
+  const barW = Math.min(24, band * 0.6);
+  const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img' });
+  for (let v = 0; v <= yMax; v += step) {
+    const y = top + plotH - (v / yMax) * plotH;
+    svg.append(svgEl('line', { x1: left, x2: width, y1: y, y2: y, stroke: css(v === 0 ? '--axis' : '--grid'), 'stroke-width': 1 }));
+    const t = svgEl('text', { x: left - 6, y: y + 4, 'text-anchor': 'end' });
+    t.textContent = v;
+    svg.append(t);
+  }
+  const labelEvery = Math.ceil(days.length / Math.max(1, Math.floor(plotW / 44)));
+  days.forEach((d, i) => {
+    const cx = left + band * i + band / 2;
+    let y = top + plotH;
+    const segs = shown.filter((s) => d[s.key] > 0);
+    segs.forEach((s, si) => {
+      const h = (d[s.key] / yMax) * plotH - (si < segs.length - 1 ? 2 : 0);
+      y -= h;
+      const isTop = si === segs.length - 1;
+      const path = isTop
+        ? svgEl('path', { d: topRounded(cx - barW / 2, y, barW, h, 4), fill: css(s.color) })
+        : svgEl('rect', { x: cx - barW / 2, y, width: barW, height: Math.max(h, 0), fill: css(s.color) });
+      svg.append(path);
+      y -= 2;
+    });
+    const hit = svgEl('rect', { x: left + band * i, y: top, width: band, height: plotH, fill: 'transparent' });
+    bindTip(hit, `${d.date}：${totals[i]} 組`, shown.map((s) => [css(s.color), `${s.label} ${d[s.key]}`]));
+    svg.append(hit);
+    if (i % labelEvery === 0) {
+      const t = svgEl('text', { x: cx, y: height - axisH + 18, 'text-anchor': 'middle' });
+      t.textContent = d.date.slice(5).replace('-', '/');
+      svg.append(t);
+    }
+  });
+  const peak = totals.indexOf(Math.max(...totals));
+  if (totals[peak] > 0) {
+    const t = svgEl('text', { x: left + band * peak + band / 2, y: top + plotH - (totals[peak] / yMax) * plotH - 6, 'text-anchor': 'middle', class: 'value' });
+    t.textContent = `最多 ${totals[peak]}`;
+    svg.append(t);
+  }
+  body.append(svg);
+}
+
+function topRounded(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
+}
+function niceStep(max) {
+  const raw = max / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  return [1, 2, 5, 10].map((m) => m * pow).find((s) => s >= raw) || 1;
+}
+
+// ---------- 單系列水平長條（Top 10）----------
+function hbars(body, rows) {
+  if (!rows.length) return body.append(el('div', { class: 'empty' }, '目前沒有不合格項目'));
+  const width = body.clientWidth || 600, rowH = 40, labelH = 16;
+  const max = Math.max(...rows.map((r) => r.count));
+  const plotW = width - 40;
+  const svg = svgEl('svg', { viewBox: `0 0 ${width} ${rows.length * rowH}`, role: 'img' });
+  rows.forEach((r, i) => {
+    const y = i * rowH;
+    const label = svgEl('text', { x: 0, y: y + 12 });
+    label.textContent = `${r.service_label}｜${r.label}`;
+    svg.append(label);
+    const w = Math.max((r.count / max) * plotW, 2);
+    const bar = svgEl('path', { d: roundedBar(0, y + labelH, w, 14, 0, 4), fill: css('--series-1') });
+    bindTip(bar, `${r.count} 次`, [[css('--series-1'), `${r.service_label}｜${r.label}`]]);
+    svg.append(bar);
+    const v = svgEl('text', { x: w + 6, y: y + labelH + 11, class: 'value' });
+    v.textContent = r.count;
+    svg.append(v);
+  });
+  body.append(svg);
+}
+
+// ---------- 組裝 ----------
+const d = DATA;
+document.title = `${d.project.name} 建案報表`;
+$('title').textContent = `${d.project.name}　建案報表`;
+$('subtitle').textContent = `${d.project.address ? d.project.address + '　' : ''}資料時間 ${d.generated_at.replace('T', ' ')}`;
+$('footer').textContent = '由驗屋預約管理系統產生 · 滑鼠移到圖上可看數字，點圖例可只看某一項，「表格」可切換成數字表';
+
+const phase = Object.fromEntries(d.phases.map((p) => [p.service, p]));
+const done = (p) => p.stages.completed;
+const kpis = [
+  { label: '住戶', value: d.units.total, note: d.units.without_email ? `${d.units.without_email} 戶缺 Email` : 'Email 皆已登錄' },
+  ...d.phases.map((p) => ({
+    label: `${p.label}完成`,
+    value: `${done(p)} / ${d.units.total}`,
+    note: p.has_reports ? `已預約 ${p.bookings}・報告已寄 ${p.reports_sent}` : `已預約 ${p.bookings}`,
+  })),
+  { label: '逾期未完成報告', value: d.overdue_reports, status: d.overdue_reports ? 'critical' : 'good', note: '預約日後超過 7 天' },
+];
+for (const k of kpis) {
+  const t = el('div', { class: 'tile' });
+  t.append(el('div', { class: 'label' }, k.label));
+  const v = el('div', { class: 'value' });
+  if (k.status) {
+    const icon = el('span', { class: 'icon' }, k.status === 'critical' ? '⚠' : '✓');
+    icon.style.color = css(k.status === 'critical' ? '--critical' : '--good');
+    v.append(icon);
+  }
+  v.append(document.createTextNode(String(k.value)));
+  t.append(v, el('div', { class: 'note' }, k.note));
+  $('kpis').append(t);
+}
+
+const stageKeys = [
+  { key: 'completed', label: d.stage_labels.completed, color: '--stage-completed' },
+  { key: 'booked', label: d.stage_labels.booked, color: '--stage-booked' },
+  { key: 'invited', label: d.stage_labels.invited, color: '--stage-invited' },
+  { key: 'not_invited', label: d.stage_labels.not_invited, color: '--stage-none' },
+];
+const phaseRows = d.phases.map((p) => ({
+  label: p.label, total: d.units.total, values: p.stages, end: `完成 ${pct(p.stages.completed, d.units.total)}`,
+}));
+card('card-phases', '各階段進度', `共 ${d.units.total} 戶；每列為一個階段，依住戶目前進度分段`,
+  (body, hidden) => stackedRows(body, phaseRows, stageKeys, hidden),
+  () => makeTable(['階段', ...stageKeys.map((k) => k.label), '完成率'],
+    d.phases.map((p) => [p.label, ...stageKeys.map((k) => p.stages[k.key]), pct(p.stages.completed, d.units.total)])),
+  stageKeys);
+
+const series = [
+  { key: 'visit', label: '參觀', color: '--series-1' },
+  { key: 'inspection', label: '驗屋', color: '--series-2' },
+  { key: 'health_check', label: '健檢', color: '--series-3' },
+];
+card('card-daily', '每日預約數', '依預約日期，參觀／驗屋／健檢分色堆疊',
+  (body, hidden) => stackedColumns(body, d.daily, series, hidden),
+  () => makeTable(['日期', ...series.map((s) => s.label), '合計'],
+    d.daily.map((x) => [x.date, ...series.map((s) => x[s.key]), series.reduce((n, s) => n + x[s.key], 0)])),
+  series);
+
+const resultKeys = [
+  { key: 'pass', label: '合格', color: '--good' },
+  { key: 'fail', label: '不合格', color: '--critical' },
+  { key: 'na', label: '不適用', color: '--neutral' },
+];
+const resultRows = [['inspection', '驗屋'], ['health_check', '健檢']].map(([k, label]) => {
+  const v = d.results[k];
+  const total = v.pass + v.fail + v.na;
+  return { label, total, values: v, end: total ? `不合格 ${pct(v.fail, total)}` : '尚無資料' };
+});
+card('card-results', '檢查結果', '所有已填寫的檢查點（合格／不合格／不適用）',
+  (body, hidden) => stackedRows(body, resultRows, resultKeys, hidden),
+  () => makeTable(['', '合格', '不合格', '不適用', '不合格率'],
+    resultRows.map((r) => [r.label, r.values.pass, r.values.fail, r.values.na, pct(r.values.fail, r.total)])),
+  resultKeys);
+
+card('card-fails', '最常見的不合格項目（Top 10）', '依出現次數排序，作為改善優先順序參考',
+  (body) => hbars(body, d.top_fails),
+  () => makeTable(['項目', '次數'], d.top_fails.map((r) => [`${r.service_label}｜${r.label}`, r.count])));
+
+$('fullscreen').addEventListener('click', () => document.documentElement.requestFullscreen?.());
+</script>
+</body>
+</html>

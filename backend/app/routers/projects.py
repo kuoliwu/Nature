@@ -34,6 +34,8 @@ from app.schemas import (
     UnitUpdate,
 )
 from app.seed import copy_template_to_project
+from app.services.dashboard import build_dashboard
+from app.services.project_report import build_html, build_xlsx
 from app.services.auth import create_download_token, get_current_user, read_download_token, require_permission
 from app.services.security import hash_id_number
 from app.services.units_excel import ExcelFormatError, export_units, export_units_csv, parse_units_excel
@@ -120,6 +122,38 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status.HTTP_409_CONFLICT, "此建案已有預約紀錄，不能刪除")
     db.delete(project)
     db.commit()
+
+
+@router.get("/projects/{project_id}/dashboard", tags=["建案"], summary="建案儀表板：各階段進度、每日預約、檢查結果")
+def project_dashboard(project_id: int, db: Session = Depends(get_db)) -> dict:
+    return build_dashboard(db, get_project_or_404(db, project_id))
+
+
+def project_report_filename(project: Project, fmt: str) -> str:
+    safe = "".join(ch for ch in project.name if ch not in '\\/:*?"<>|')
+    return f"建案報表_{safe}_{date.today():%Y%m%d}.{fmt}"
+
+
+def project_report_response(db: Session, project: Project, fmt: str) -> Response:
+    data = build_dashboard(db, project)
+    content, mime = (build_html(data), "text/html; charset=utf-8") if fmt == "html" else (build_xlsx(data), XLSX_MIME)
+    filename = project_report_filename(project, fmt)
+    return Response(
+        content, media_type=mime,
+        headers={"Content-Disposition": f"attachment; filename=report.{fmt}; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.post("/projects/{project_id}/report-export-link", response_model=DownloadLinkOut, tags=["建案"],
+             summary="匯出建案報表（互動網頁 html / Excel xlsx）的 5 分鐘下載連結")
+def project_report_link(project_id: int, request: Request, format: Literal["html", "xlsx"] = "html", db: Session = Depends(get_db)):
+    project = get_project_or_404(db, project_id)
+    token, expires = create_download_token({"kind": "project_report", "project_id": project.id, "fmt": format})
+    return DownloadLinkOut(
+        url=f"{str(request.base_url).rstrip('/')}/downloads/{token}",
+        filename=project_report_filename(project, format),
+        expires_at=expires,
+    )
 
 
 # ---------------------------------------------------------------------------
