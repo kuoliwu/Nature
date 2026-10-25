@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <title>驗屋預約管理</title>
+    <!-- 加入主畫面（PWA）：網頁版由後端在 /app 提供，路徑都以 /app 開頭 -->
+    <link rel="manifest" href="/app/manifest.json" />
+    <meta name="theme-color" content="#1d4ed8" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/app/icons/icon-192.png" />
+    <!-- iPhone / iPad：主畫面圖示、全螢幕開啟、狀態列樣式、主畫面上的名稱 -->
+    <link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="驗屋管理" />
+    <meta name="format-detection" content="telephone=no" />
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+      /* 主畫面開啟（全螢幕）時避開 iPhone 瀏海與底部橫條 */
+      body {
+        background-color: #f3f4f6;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>請開啟瀏覽器的 JavaScript 才能使用。</noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  </body>
+</html>

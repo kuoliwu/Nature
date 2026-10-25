@@ -529,6 +529,15 @@ cd ~/stock/nature/nature/mobile && npm run build:web     # 程式有更新時重
 產生的網頁放在 `backend/webapp/`，之後只要後端在跑，瀏覽器開 **`http://localhost:8000/app`** 就能用（主機位址自動設定）。
 同一個 Wi-Fi 的其他電腦也可以開 `http://192.168.68.109:8000/app`。
 
+**iPhone / iPad 當成 APP 使用（加入主畫面）**
+
+1. 用 **Safari** 開 `http://192.168.68.109:8000/app`（5G 時開 `http://100.76.33.111:8000/app`，手機需開 Tailscale）。
+2. 按下方「分享」→「**加入主畫面**」→「加入」。
+3. 主畫面會出現藍底白色「H」圖示「驗屋管理」，點開為全螢幕、沒有網址列，用起來和 APP 一樣（拍照、簽名都可以用）。
+
+Android 手機用 Chrome 開同一個網址 →「⋮」選單 →「安裝應用程式／加到主畫面」，效果相同。
+APP 圖示的原始檔由 `mobile/scripts/make_icons.py` 產生（藍底白色 H）。
+
 ### 開機自動啟動後端
 
 在 Windows PowerShell（一般權限即可）執行一次：

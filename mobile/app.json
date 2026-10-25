@@ -20,7 +20,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#1d4ed8",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -29,7 +29,11 @@
       "package": "com.servicehopo.inspection"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "name": "驗屋預約管理",
+      "shortName": "驗屋管理",
+      "themeColor": "#1d4ed8",
+      "backgroundColor": "#f3f4f6"
     },
     "plugins": [
       "expo-router",
