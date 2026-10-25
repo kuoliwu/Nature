@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from app import models  # noqa: F401  確保所有 Model 已註冊
 from app.config import BASE_DIR, settings
-from app.database import Base, add_missing_columns, engine, is_db_initialized
+from app.database import Base, SessionLocal, add_missing_columns, engine, is_db_initialized
 from app.routers import (
     auth,
     authorizations,
@@ -20,6 +20,7 @@ from app.routers import (
     system,
     users,
 )
+from app.seed import migrate_checklist_services
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 STORAGE_SUBDIRS = [
@@ -36,6 +37,9 @@ async def lifespan(_app: FastAPI):
         Base.metadata.create_all(engine)
         for col in add_missing_columns():
             print(f"  資料庫升級：新增欄位 {col}")
+        with SessionLocal() as db:
+            if migrate_checklist_services(db):
+                print("  資料庫升級：既有建案的檢查清單設為「驗屋」清單")
     start_scheduler()
     yield
     stop_scheduler()

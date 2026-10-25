@@ -5,7 +5,7 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, ScheduleItem } from '@/lib/api';
 import { dayLabel, parseDate, shortTime, toDateString } from '@/lib/dates';
-import { STATUS_LABEL } from '@/lib/labels';
+import { SERVICE_LABEL, STATUS_LABEL } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
 
@@ -67,13 +67,16 @@ function ScheduleRow({ item }: { item: ScheduleItem }) {
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={localStyles.title}>
+          <Text style={localStyles.service}>{SERVICE_LABEL[item.service_type]}　</Text>
           {item.project_name} {item.unit_no}
         </Text>
         <Text style={localStyles.meta}>
           {item.contact_name}　{item.contact_phone}
         </Text>
         <Text style={localStyles.meta}>
-          {item.status === 'not_started' ? `共 ${item.total} 個檢查點` : `已檢查 ${item.checked}/${item.total}`}
+          {item.service_type === 'visit'
+            ? item.checked_in_at ? `已於 ${shortTime(item.checked_in_at.slice(11))} 報到` : '到場後點此報到'
+            : item.status === 'not_started' ? `共 ${item.total} 個檢查點` : `已檢查 ${item.checked}/${item.total}`}
           {item.fail_count ? `｜不合格 ${item.fail_count}` : ''}
         </Text>
       </View>
@@ -106,6 +109,7 @@ const localStyles = StyleSheet.create({
   timeText: { fontSize: 18, fontWeight: '700', color: colors.text },
   timeSub: { fontSize: 12, color: colors.muted },
   title: { fontSize: 16, fontWeight: '700', color: colors.text },
+  service: { fontSize: 13, fontWeight: '700', color: colors.primary },
   meta: { fontSize: 13, color: colors.muted },
   badge: { fontSize: 12, fontWeight: '600', borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
 });

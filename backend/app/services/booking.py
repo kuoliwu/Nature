@@ -12,7 +12,7 @@ from app.models import Booking, BookingBatch, BookingStatus, ServiceType, TimeSl
 from app.services.mailer import send_email_safely
 from app.services.slots import ACTIVE_STATUSES
 
-SERVICE_LABEL = {ServiceType.HEALTH_CHECK: "健檢", ServiceType.INSPECTION: "驗屋"}
+SERVICE_LABEL = {ServiceType.VISIT: "參觀", ServiceType.INSPECTION: "驗屋", ServiceType.HEALTH_CHECK: "健檢"}
 WEEKDAYS = "一二三四五六日"
 
 

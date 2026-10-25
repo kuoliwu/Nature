@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import (
+    CHECKLIST_SERVICES,
     Booking,
     BookingStatus,
     CheckResult,
@@ -81,8 +82,14 @@ def _inspection(db: Session, booking: Booking) -> Inspection | None:
     return db.scalar(select(Inspection).where(Inspection.booking_id == booking.id))
 
 
+def _service(booking: Booking) -> str:
+    return booking.slot.batch.service_type.value
+
+
 def _editable_inspection(db: Session, booking: Booking, user: User) -> Inspection:
     """取得可編輯的驗屋紀錄；第一次編輯時建立"""
+    if _service(booking) not in CHECKLIST_SERVICES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "參觀預約沒有檢查項目，請使用「報到」")
     inspection = _inspection(db, booking)
     if inspection is None:
         inspection = Inspection(booking_id=booking.id, inspector_id=user.id)
@@ -93,19 +100,33 @@ def _editable_inspection(db: Session, booking: Booking, user: User) -> Inspectio
     return inspection
 
 
+def _status(booking: Booking, inspection: Inspection | None) -> str:
+    """參觀：not_started / checked_in；驗屋、健檢：驗屋紀錄的狀態"""
+    if _service(booking) not in CHECKLIST_SERVICES:
+        return "checked_in" if booking.checked_in_at else "not_started"
+    return inspection.status.value if inspection else "not_started"
+
+
 def _place(booking: Booking) -> str:
     unit, project = booking.unit, booking.unit.project
     return unit.address or project.address or project.community_address or ""
 
 
 def _checklist(db: Session, booking: Booking, results: dict[int, InspectionResult]):
-    """建案目前啟用的檢查項目；已停用但這筆預約有結果的也保留，避免紀錄消失"""
+    """
+    此預約服務（驗屋 / 健檢）目前啟用的檢查項目。
+    已停用、或屬於另一份清單但這筆預約已有結果的檢查點也保留，避免紀錄消失。參觀沒有檢查項目。
+    """
+    service = _service(booking)
+    if service not in CHECKLIST_SERVICES:
+        return
     project = booking.unit.project
-    ensure_project_checklist(db, project)
-    for cat in project.checklist:
+    ensure_project_checklist(db, project, service)
+    for cat in sorted(project.checklist, key=lambda c: (c.service_type != service, c.sort_order)):
+        current = cat.service_type == service
         items = []
         for item in cat.items:
-            points = [p for p in item.check_points if (p.is_active and item.is_active and cat.is_active) or p.id in results]
+            points = [p for p in item.check_points if (current and p.is_active and item.is_active and cat.is_active) or p.id in results]
             if points:
                 items.append((item, points))
         if items:
@@ -164,7 +185,9 @@ def _inspection_out(db: Session, request: Request, booking: Booking) -> Inspecti
         end_time=slot.end_time,
         contact_name=booking.contact_name,
         contact_phone=booking.contact_phone,
-        status=inspection.status.value if inspection else "not_started",
+        status=_status(booking, inspection),
+        service_type=_service(booking),
+        checked_in_at=booking.checked_in_at,
         general_note=inspection.general_note if inspection else None,
         inspector_name=inspection.inspector.name if inspection and inspection.inspector else None,
         signer_name=inspection.signer_name if inspection else None,
@@ -207,8 +230,9 @@ def schedule(day: date, db: Session = Depends(get_db), _: User = Depends(can_vie
             booking_id=b.id, project_id=b.unit.project_id, project_name=b.unit.project.name, unit_no=b.unit.unit_no,
             place=_place(b), date=b.slot.slot_date, start_time=b.slot.start_time, end_time=b.slot.end_time,
             contact_name=b.contact_name, contact_phone=b.contact_phone,
-            status=inspection.status.value if inspection else "not_started",
+            status=_status(b, inspection),
             checked=checked, total=total, fail_count=fails,
+            service_type=_service(b), checked_in_at=b.checked_in_at,
         ))
     return out
 
@@ -231,6 +255,8 @@ def set_result(
     if point is None or point.item.category.project_id != booking.unit.project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "此檢查點不屬於這個建案")
     _editable_inspection(db, booking, user)
+    if point.item.category.service_type != _service(booking) and point.id not in _results(db, booking.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "此檢查點不屬於這份檢查清單")
 
     result = db.scalar(select(InspectionResult).where(
         InspectionResult.booking_id == booking.id, InspectionResult.check_point_id == point.id
@@ -481,4 +507,34 @@ def send_report(
     tasks.add_task(
         send_email_safely, [to], f"【{unit.project.name}】{title}（{unit.unit_no}）", body_text, attachments,
     )
+    return _inspection_out(db, request, booking)
+
+
+
+# ---------------------------------------------------------------------------
+# 參觀：現場報到
+# ---------------------------------------------------------------------------
+can_checkin = require_any_permission("booking.manage", "inspection.edit")
+
+
+@router.post("/bookings/{booking_id}/checkin", response_model=InspectionOut)
+def check_in(booking_id: int, request: Request, db: Session = Depends(get_db), _: User = Depends(can_checkin)):
+    """參觀當天屋主到場：標記報到、預約完成"""
+    booking = _get_booking(db, booking_id)
+    if _service(booking) in CHECKLIST_SERVICES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "驗屋／健檢請填寫檢查項目並請屋主簽名")
+    booking.checked_in_at = booking.checked_in_at or datetime.now()
+    booking.status = BookingStatus.COMPLETED
+    db.commit()
+    return _inspection_out(db, request, booking)
+
+
+@router.post("/bookings/{booking_id}/checkin/undo", response_model=InspectionOut)
+def undo_check_in(booking_id: int, request: Request, db: Session = Depends(get_db), _: User = Depends(can_checkin)):
+    booking = _get_booking(db, booking_id)
+    if _service(booking) in CHECKLIST_SERVICES or booking.checked_in_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "此預約沒有報到紀錄")
+    booking.checked_in_at = None
+    booking.status = BookingStatus.BOOKED
+    db.commit()
     return _inspection_out(db, request, booking)

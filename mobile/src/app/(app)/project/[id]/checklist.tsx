@@ -4,7 +4,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 
 import { ActionSheet, PromptModal, SheetOption } from '@/components/overlays';
 import { Button, Card, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
-import { api, ChecklistCategory, ChecklistItem, CheckPoint } from '@/lib/api';
+import { api, ChecklistCategory, ChecklistItem, ChecklistService, CheckPoint } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { confirm, errorText } from '@/lib/dialogs';
 import { useLoad } from '@/lib/useLoad';
@@ -13,20 +13,22 @@ type Prompt = { title: string; message?: string; initial?: string; onConfirm: (n
 type Sheet = { title: string; options: SheetOption[] };
 
 export default function ChecklistScreen() {
-  const projectId = Number(useLocalSearchParams<{ id: string }>().id);
+  const params = useLocalSearchParams<{ id: string; service?: ChecklistService }>();
+  const projectId = Number(params.id);
+  const service: ChecklistService = params.service === 'health_check' ? 'health_check' : 'inspection';
   const { can } = useAuth();
   const editable = can('project.manage');
   const navigation = useNavigation();
   const { data: categories, setData, error, setError, refresh, refreshing } = useLoad(
-    () => api.checklist(projectId),
-    [projectId],
+    () => api.checklist(projectId, service),
+    [projectId, service],
   );
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [sheet, setSheet] = useState<Sheet | null>(null);
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: '檢查項目清單' });
-  }, [navigation]);
+    navigation.setOptions({ title: service === 'health_check' ? '健檢檢查清單' : '驗屋檢查清單' });
+  }, [navigation, service]);
 
   if (!categories) return error ? <Message kind="error" text={error} /> : <Loading />;
 
@@ -112,7 +114,11 @@ export default function ChecklistScreen() {
       >
         <Message
           kind="info"
-          text={editable ? '點類別、項目或檢查點可新增、改名、停用或刪除。此清單只影響這個建案。' : '此建案驗屋時使用的檢查項目'}
+          text={
+            editable
+              ? `點類別、項目或檢查點可新增、改名、停用或刪除。此清單只用於這個建案的${service === 'health_check' ? '健檢' : '驗屋'}。`
+              : `此建案${service === 'health_check' ? '健檢' : '驗屋'}時使用的檢查項目`
+          }
         />
         {error && <Message kind="error" text={error} />}
 
@@ -158,7 +164,7 @@ export default function ChecklistScreen() {
                 title: '新增類別',
                 message: '例如：門、地板、牆面',
                 onConfirm: async (name) => {
-                  const created = await api.addCategory(projectId, name);
+                  const created = await api.addCategory(projectId, name, service);
                   setData((list: ChecklistCategory[] | null) => list && [...list, created]);
                 },
               })

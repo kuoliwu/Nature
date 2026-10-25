@@ -54,8 +54,13 @@ class UserRole(str, enum.Enum):
 
 
 class ServiceType(str, enum.Enum):
-    INSPECTION = "inspection"  # 驗屋
-    HEALTH_CHECK = "health_check"  # 健檢
+    VISIT = "visit"  # 第二階段：預約參觀（只預約＋現場報到，沒有檢查項目）
+    INSPECTION = "inspection"  # 第三階段：驗屋
+    HEALTH_CHECK = "health_check"  # 第四階段：健檢
+
+
+# 有檢查清單與報告的服務（驗屋、健檢各有一份清單）
+CHECKLIST_SERVICES = ("inspection", "health_check")
 
 
 class QuotaMode(str, enum.Enum):
@@ -308,6 +313,7 @@ class Booking(TimestampMixin, Base):
     contact_email: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[BookingStatus] = mapped_column(enum_col(BookingStatus), default=BookingStatus.BOOKED)
     is_delegated: Mapped[bool] = mapped_column(default=False)  # 委託代驗 → 需走線上授權
+    checked_in_at: Mapped[datetime | None]  # 參觀：現場報到時間
     note: Mapped[str | None] = mapped_column(Text)
 
     slot: Mapped[TimeSlot] = relationship(back_populates="bookings")
@@ -437,6 +443,8 @@ class InspectionCategory(Base):
     sort_order: Mapped[int] = mapped_column(default=0)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     is_active: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
+    # 建案的清單屬於哪個服務（inspection 驗屋 / health_check 健檢）；公司範本為 NULL
+    service_type: Mapped[str | None] = mapped_column(String(30))
 
     project: Mapped["Project | None"] = relationship(back_populates="checklist")
 

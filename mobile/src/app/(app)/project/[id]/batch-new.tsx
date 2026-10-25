@@ -4,22 +4,24 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DateTimeField } from '@/components/pickers';
 import { Button, Card, Field, Message, Screen, colors, styles as ui } from '@/components/ui';
-import { api, BatchInput } from '@/lib/api';
+import { api, ServiceType } from '@/lib/api';
 import { daysBetween, parseDate, slotsPerDay, TimeRange, toDateString } from '@/lib/dates';
 import { errorText } from '@/lib/dialogs';
+import { PHASES, SERVICE_LABEL } from '@/lib/labels';
 
 /**
  * 新增健檢日期（params.batchId 有值時改為「追加日期」到既有設定）
  */
 export default function BatchNewScreen() {
-  const params = useLocalSearchParams<{ id: string; batchId?: string }>();
+  const params = useLocalSearchParams<{ id: string; batchId?: string; service?: ServiceType }>();
   const projectId = Number(params.id);
   const addingTo = params.batchId ? Number(params.batchId) : null;
   const navigation = useNavigation();
 
   const today = toDateString(new Date());
-  const [name, setName] = useState('交屋健檢');
-  const [service, setService] = useState<BatchInput['service_type']>('health_check');
+  const fixed = PHASES.find((p) => p.service === params.service); // 從某個階段進來時類型固定
+  const [service, setService] = useState<ServiceType>(fixed?.service ?? 'health_check');
+  const [name, setName] = useState<string>(fixed?.defaultName ?? '保固健檢');
   const [startDate, setStartDate] = useState<string | null>(today);
   const [endDate, setEndDate] = useState<string | null>(today);
   const [dayStart, setDayStart] = useState<string | null>('09:00');
@@ -30,8 +32,8 @@ export default function BatchNewScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: addingTo ? '追加日期' : '新增健檢日期' });
-  }, [navigation, addingTo]);
+    navigation.setOptions({ title: addingTo ? '追加日期' : `新增${SERVICE_LABEL[service]}日期` });
+  }, [navigation, addingTo, service]);
 
   const days = startDate && endDate ? daysBetween(parseDate(startDate), parseDate(endDate)) : 0;
   const perDay = dayStart && dayEnd ? slotsPerDay(dayStart, dayEnd, breaks) : 0;
@@ -73,17 +75,26 @@ export default function BatchNewScreen() {
     <Screen>
       {!addingTo && (
         <Card>
-          <Field label="名稱" value={name} onChangeText={setName} placeholder="例：交屋健檢、一年保固健檢" />
-          <Text style={ui.label}>類型</Text>
-          <View style={localStyles.chips}>
-            {(['health_check', 'inspection'] as const).map((t) => (
-              <Pressable key={t} onPress={() => setService(t)} style={[localStyles.chip, service === t && localStyles.chipOn]}>
-                <Text style={[localStyles.chipText, service === t && localStyles.chipTextOn]}>
-                  {t === 'health_check' ? '健檢' : '驗屋'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <Field label="名稱" value={name} onChangeText={setName} placeholder="例：預約參觀、交屋驗屋、一年保固健檢" />
+          {!fixed && (
+            <>
+              <Text style={ui.label}>類型</Text>
+              <View style={localStyles.chips}>
+                {PHASES.map((p) => (
+                  <Pressable
+                    key={p.service}
+                    onPress={() => {
+                      setService(p.service);
+                      setName(p.defaultName);
+                    }}
+                    style={[localStyles.chip, service === p.service && localStyles.chipOn]}
+                  >
+                    <Text style={[localStyles.chipText, service === p.service && localStyles.chipTextOn]}>{SERVICE_LABEL[p.service]}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
         </Card>
       )}
 

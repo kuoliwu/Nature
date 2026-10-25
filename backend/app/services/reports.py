@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Booking, Inspection, InspectionStatus, Report, ReportReminder, TimeSlot
+from app.models import Booking, BookingBatch, Inspection, InspectionStatus, Report, ReportReminder, ServiceType, TimeSlot
 from app.services.booking import SERVICE_LABEL, slot_label
 from app.services.mailer import send_email
 from app.services.slots import ACTIVE_STATUSES
@@ -42,7 +42,12 @@ def overdue_bookings(db: Session, today: date | None = None) -> list[Overdue]:
     bookings = db.scalars(
         select(Booking)
         .join(TimeSlot, Booking.slot_id == TimeSlot.id)
-        .where(Booking.status.in_(ACTIVE_STATUSES), TimeSlot.slot_date <= today - timedelta(days=REMINDER_DAYS[0]))
+        .join(BookingBatch, Booking.batch_id == BookingBatch.id)
+        .where(
+            Booking.status.in_(ACTIVE_STATUSES),
+            TimeSlot.slot_date <= today - timedelta(days=REMINDER_DAYS[0]),
+            BookingBatch.service_type != ServiceType.VISIT,  # 參觀沒有報告
+        )
         .order_by(TimeSlot.slot_date, TimeSlot.start_time)
     )
     out = []

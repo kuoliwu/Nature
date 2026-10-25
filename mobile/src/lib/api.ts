@@ -43,6 +43,9 @@ export type UserInput = {
   permissions?: string[];
 };
 
+export type ServiceType = 'visit' | 'inspection' | 'health_check';
+export type ChecklistService = 'inspection' | 'health_check';
+
 export type ProjectInput = {
   name: string;
   phone?: string | null;
@@ -57,6 +60,7 @@ export type Project = Required<ProjectInput> & {
   created_at: string;
   unit_count: number;
   batch_count: number;
+  batch_counts: Record<ServiceType, number>;
 };
 
 export type UnitImportResult = {
@@ -88,7 +92,7 @@ export type Unit = Required<UnitInput> & {
 
 export type BatchInput = {
   name: string;
-  service_type: 'health_check' | 'inspection';
+  service_type: ServiceType;
   start_date: string;
   end_date: string;
   day_start: string; // HH:MM
@@ -111,7 +115,7 @@ export type Batch = {
   id: number;
   project_id: number;
   name: string;
-  service_type: 'health_check' | 'inspection';
+  service_type: ServiceType;
   slot_minutes: number;
   slot_capacity: number;
   is_active: boolean;
@@ -158,7 +162,7 @@ export type BatchSettings = {
   booking_close_at?: string | null;
 };
 
-export type InspectionStatus = 'not_started' | 'in_progress' | 'signed' | 'approved' | 'sent';
+export type InspectionStatus = 'not_started' | 'in_progress' | 'signed' | 'approved' | 'sent' | 'checked_in';
 export type ResultValue = 'pending' | 'pass' | 'fail' | 'na';
 
 export type ScheduleItem = {
@@ -176,6 +180,8 @@ export type ScheduleItem = {
   checked: number;
   total: number;
   fail_count: number;
+  service_type: ServiceType;
+  checked_in_at: string | null;
 };
 
 export type InspectionPhoto = { id: number; check_point_id: number | null; url: string; caption: string | null };
@@ -366,7 +372,8 @@ export const api = {
   deleteUnit: (id: number) => request<null>(`/units/${id}`, { method: 'DELETE' }),
 
   // 健檢日期與時段
-  batches: (projectId: number) => request<Batch[]>(`/projects/${projectId}/batches`),
+  batches: (projectId: number, service?: ServiceType) =>
+    request<Batch[]>(`/projects/${projectId}/batches${service ? `?service=${service}` : ''}`),
   batch: (id: number) => request<BatchDetail>(`/batches/${id}`),
   createBatch: (projectId: number, body: BatchInput) =>
     request<BatchDetail>(`/projects/${projectId}/batches`, { method: 'POST', body }),
@@ -400,6 +407,8 @@ export const api = {
   deletePhoto: (photoId: number) => request<null>(`/inspection-photos/${photoId}`, { method: 'DELETE' }),
   signInspection: (bookingId: number, body: { signer_name: string; strokes: number[][][]; width: number; height: number }) =>
     request<Inspection>(`/inspections/${bookingId}/sign`, { method: 'POST', body }),
+  checkIn: (bookingId: number) => request<Inspection>(`/bookings/${bookingId}/checkin`, { method: 'POST' }),
+  undoCheckIn: (bookingId: number) => request<Inspection>(`/bookings/${bookingId}/checkin/undo`, { method: 'POST' }),
   reopenInspection: (bookingId: number) => request<Inspection>(`/inspections/${bookingId}/reopen`, { method: 'POST' }),
   reportLink: (bookingId: number) =>
     request<{ url: string; filename: string }>(`/inspections/${bookingId}/report-link`, { method: 'POST' }),
@@ -418,9 +427,10 @@ export const api = {
   runBackup: () => request<{ database: string | null; files_copied: number; backup_dir: string }>('/backup/run', { method: 'POST' }),
 
   // 檢查項目清單（每個建案一份）
-  checklist: (projectId: number) => request<ChecklistCategory[]>(`/projects/${projectId}/checklist`),
-  addCategory: (projectId: number, name: string) =>
-    request<ChecklistCategory>(`/projects/${projectId}/checklist/categories`, { method: 'POST', body: { name } }),
+  checklist: (projectId: number, service: ChecklistService) =>
+    request<ChecklistCategory[]>(`/projects/${projectId}/checklist?service=${service}`),
+  addCategory: (projectId: number, name: string, service: ChecklistService) =>
+    request<ChecklistCategory>(`/projects/${projectId}/checklist/categories?service=${service}`, { method: 'POST', body: { name } }),
   updateCategory: (id: number, body: ChecklistPatch) =>
     request<ChecklistCategory>(`/checklist/categories/${id}`, { method: 'PATCH', body }),
   deleteCategory: (id: number) => request<null>(`/checklist/categories/${id}`, { method: 'DELETE' }),

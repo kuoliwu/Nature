@@ -9,7 +9,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import Booking, BookingBatch, InspectionCategory, InspectionItem, Project, Unit
+from app.models import (
+    CHECKLIST_SERVICES,
+    Booking,
+    BookingBatch,
+    InspectionCategory,
+    InspectionItem,
+    Project,
+    ServiceType,
+    Unit,
+)
 from app.schemas import (
     DownloadLinkOut,
     InspectionCategoryOut,
@@ -57,6 +66,12 @@ def _project_out(db: Session, project: Project) -> ProjectOut:
     batch_count = db.scalar(select(func.count(BookingBatch.id)).where(BookingBatch.project_id == project.id))
     out = ProjectOut.model_validate(project)
     out.unit_count, out.batch_count = unit_count or 0, batch_count or 0
+    rows = db.execute(
+        select(BookingBatch.service_type, func.count(BookingBatch.id))
+        .where(BookingBatch.project_id == project.id)
+        .group_by(BookingBatch.service_type)
+    ).all()
+    out.batch_counts = {s.value: 0 for s in ServiceType} | {s.value: n for s, n in rows}
     return out
 
 
@@ -68,7 +83,8 @@ def create_project(body: ProjectIn, db: Session = Depends(get_db)):
     project = Project(**body.model_dump())
     db.add(project)
     db.flush()
-    copy_template_to_project(db, project)  # 新建案自動帶入公司範本的檢查項目
+    for service in CHECKLIST_SERVICES:  # 驗屋、健檢各一份，從公司範本複製
+        copy_template_to_project(db, project, service)
     db.commit()
     return _project_out(db, project)
 

@@ -1,6 +1,6 @@
 """檢查項目：公司範本（project_id 為 NULL）與「新建案複製範本」。可重複執行，不會重複建立。"""
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import InspectionCategory, InspectionCheckPoint, InspectionItem, Project
@@ -86,13 +86,15 @@ def template_categories(db: Session) -> list[InspectionCategory]:
     )
 
 
-def copy_template_to_project(db: Session, project: Project) -> None:
-    """把公司範本（只複製啟用中的）複製成此建案自己的清單。呼叫端負責 commit。"""
+def copy_template_to_project(db: Session, project: Project, service: str = "inspection") -> None:
+    """把公司範本（只複製啟用中的）複製成此建案某個服務（驗屋 / 健檢）的清單。呼叫端負責 commit。"""
     if not template_categories(db):
         seed_inspection_checklist(db)
+    prefix = f"p{project.id}" if service == "inspection" else f"p{project.id}-{service}"
     for cat in template_categories(db):
         copy = InspectionCategory(
-            code=f"p{project.id}-{cat.code}", name=cat.name, sort_order=cat.sort_order, project_id=project.id
+            code=f"{prefix}-{cat.code}", name=cat.name, sort_order=cat.sort_order,
+            project_id=project.id, service_type=service,
         )
         for item in cat.items:
             if not item.is_active:
@@ -106,9 +108,26 @@ def copy_template_to_project(db: Session, project: Project) -> None:
     db.flush()
 
 
-def ensure_project_checklist(db: Session, project: Project) -> None:
-    """舊建案（此功能上線前建立的）第一次讀取清單時補複製"""
-    if not project.checklist:
-        copy_template_to_project(db, project)
+def project_checklist(project: Project, service: str) -> list[InspectionCategory]:
+    """建案某個服務的清單（依排序）"""
+    return sorted((c for c in project.checklist if c.service_type == service), key=lambda c: c.sort_order)
+
+
+def ensure_project_checklist(db: Session, project: Project, service: str = "inspection") -> list[InspectionCategory]:
+    """第一次讀取某服務的清單時，從公司範本複製（舊建案、健檢清單都靠這裡補）"""
+    if not project_checklist(project, service):
+        copy_template_to_project(db, project, service)
         db.commit()
         db.refresh(project)
+    return project_checklist(project, service)
+
+
+def migrate_checklist_services(db: Session) -> int:
+    """升級：舊版建案清單沒有 service_type，一律視為驗屋清單"""
+    result = db.execute(
+        update(InspectionCategory)
+        .where(InspectionCategory.project_id.is_not(None), InspectionCategory.service_type.is_(None))
+        .values(service_type="inspection")
+    )
+    db.commit()
+    return result.rowcount or 0

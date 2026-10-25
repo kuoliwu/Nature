@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { dayLabel, shortTime } from '@/lib/dates';
 import { confirm, errorText } from '@/lib/dialogs';
 import { pickImage, pickPdf, uploadFile } from '@/lib/files';
-import { STATUS_LABEL } from '@/lib/labels';
+import { SERVICE_LABEL, STATUS_LABEL } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
 const RESULTS: { value: ResultValue; label: string; color: string; bg: string }[] = [
@@ -31,7 +31,7 @@ export default function InspectionScreen() {
   const editable = can('inspection.edit') && (ins?.status === 'not_started' || ins?.status === 'in_progress');
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: ins ? `${ins.unit_no} 驗屋` : '驗屋' });
+    navigation.setOptions({ title: ins ? `${ins.unit_no} ${SERVICE_LABEL[ins.service_type]}` : '' });
   }, [navigation, ins]);
 
   if (!ins) return error ? <Message kind="error" text={error} /> : <Loading />;
@@ -138,6 +138,11 @@ export default function InspectionScreen() {
 
   const status = STATUS_LABEL[ins.status];
   const done = ins.checked === ins.total && ins.total > 0;
+  const isVisit = ins.service_type === 'visit';
+  const canCheckIn = can('booking.manage') || can('inspection.edit');
+
+  const checkIn = () => run('報到中…', async () => setData(await api.checkIn(bookingId)));
+  const undoCheckIn = () => run(null, async () => setData(await api.undoCheckIn(bookingId)));
 
   return (
     <View style={{ flex: 1 }}>
@@ -159,152 +164,176 @@ export default function InspectionScreen() {
               {ins.contact_phone}
             </Text>
           </Text>
-          <View style={localStyles.progressTrack}>
-            <View style={[localStyles.progressBar, { width: `${ins.total ? (ins.checked / ins.total) * 100 : 0}%` }]} />
-          </View>
-          <Text style={localStyles.meta}>
-            已檢查 {ins.checked}/{ins.total}{ins.fail_count ? `｜不合格 ${ins.fail_count} 項` : ''}
-          </Text>
+          {!isVisit && (
+            <>
+              <View style={localStyles.progressTrack}>
+                <View style={[localStyles.progressBar, { width: `${ins.total ? (ins.checked / ins.total) * 100 : 0}%` }]} />
+              </View>
+              <Text style={localStyles.meta}>
+                已檢查 {ins.checked}/{ins.total}{ins.fail_count ? `｜不合格 ${ins.fail_count} 項` : ''}
+              </Text>
+            </>
+          )}
         </Card>
 
         {error && <Message kind="error" text={error} />}
         {busy && <Message kind="info" text={busy} />}
         {notice && <Message kind="ok" text={notice} />}
 
-        {ins.categories.map((cat) => (
-          <View key={cat.id} style={{ gap: 8 }}>
-            <Text style={localStyles.category}>{cat.name}</Text>
-            {cat.items.map((item) => (
-              <Card key={item.id}>
-                <View style={localStyles.itemHead}>
-                  <Text style={localStyles.itemName}>{item.name}</Text>
-                  {editable && item.points.some((p) => p.result === 'pending') && (
-                    <Pressable onPress={() => passAll(item.points)} hitSlop={8}>
-                      <Text style={localStyles.link}>其餘全部合格</Text>
-                    </Pressable>
+        {isVisit ? (
+          <Card title="參觀報到">
+            {ins.checked_in_at ? (
+              <>
+                <Text style={localStyles.checkedIn}>✓ 已於 {ins.checked_in_at.replace('T', ' ').slice(0, 16)} 報到</Text>
+                {canCheckIn && (
+                  <Text style={[localStyles.link, { textAlign: 'center', marginTop: 8 }]} onPress={undoCheckIn}>取消報到</Text>
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={localStyles.meta}>參觀不需要填檢查項目，屋主到場後按「已到場」即可。</Text>
+                {canCheckIn && <View style={{ marginTop: 8 }}><Button label="已到場（報到）" variant="secondary" onPress={checkIn} /></View>}
+              </>
+            )}
+          </Card>
+        ) : (
+          <>
+            {ins.categories.map((cat) => (
+              <View key={cat.id} style={{ gap: 8 }}>
+                <Text style={localStyles.category}>{cat.name}</Text>
+                {cat.items.map((item) => (
+                  <Card key={item.id}>
+                    <View style={localStyles.itemHead}>
+                      <Text style={localStyles.itemName}>{item.name}</Text>
+                      {editable && item.points.some((p) => p.result === 'pending') && (
+                        <Pressable onPress={() => passAll(item.points)} hitSlop={8}>
+                          <Text style={localStyles.link}>其餘全部合格</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                    {item.points.map((p) => (
+                      <View key={p.id} style={localStyles.point}>
+                        <Pressable style={localStyles.pointHead} onPress={() => setPointId(p.id)}>
+                          <Text style={localStyles.pointName}>{p.name}</Text>
+                          <Text style={localStyles.pointExtra}>
+                            {p.note ? '📝 ' : ''}{p.photos.length ? `📷${p.photos.length} ` : ''}{editable ? '備註／拍照 ›' : p.note || p.photos.length ? '查看 ›' : ''}
+                          </Text>
+                        </Pressable>
+                        <View style={localStyles.results}>
+                          {RESULTS.map((r) => {
+                            const on = p.result === r.value;
+                            return (
+                              <Pressable
+                                key={r.value}
+                                disabled={!editable}
+                                onPress={() => setResult(p, r.value)}
+                                style={[localStyles.resultBtn, on && { backgroundColor: r.bg, borderColor: r.color }]}
+                              >
+                                <Text style={[localStyles.resultText, on && { color: r.color, fontWeight: '700' }]}>{r.label}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        {!!p.note && <Text style={localStyles.note}>{p.note}</Text>}
+                        {p.photos.length > 0 && <Thumbs photos={p.photos} onPress={() => setPointId(p.id)} />}
+                      </View>
+                    ))}
+                  </Card>
+                ))}
+              </View>
+            ))}
+
+            <Card title="整體備註與照片">
+              <NoteEditor
+                value={ins.general_note}
+                editable={editable}
+                placeholder="例如：整體狀況良好，屋主另提醒…"
+                onSave={(text) => run(null, async () => setData(await api.updateInspectionNote(bookingId, text)))}
+              />
+              <Thumbs photos={ins.general_photos} onPress={() => setPointId(-1)} />
+              {editable && <Button label="＋ 整體照片" variant="outline" onPress={() => setPointId(-1)} />}
+            </Card>
+
+            {ins.status === 'not_started' || ins.status === 'in_progress' ? (
+              editable && (
+                <Button
+                  label={done ? '完成檢查，請屋主簽名' : `還有 ${ins.total - ins.checked} 個檢查點未填寫`}
+                  disabled={!done}
+                  onPress={() => router.push({ pathname: '/inspection/[bookingId]/sign', params: { bookingId: String(bookingId) } })}
+                />
+              )
+            ) : (
+              <Card title="屋主簽名">
+                {ins.signature_url && <Image source={{ uri: ins.signature_url }} style={localStyles.signature} resizeMode="contain" />}
+                <Text style={localStyles.meta}>
+                  {ins.signer_name}　{ins.signed_at?.replace('T', ' ').slice(0, 16)}
+                  {ins.inspector_name ? `｜驗屋人員 ${ins.inspector_name}` : ''}
+                </Text>
+              </Card>
+            )}
+
+            {(ins.status === 'signed' || ins.status === 'approved' || ins.status === 'sent') && (
+              <Card title="報告">
+                <Steps status={ins.status} />
+                {ins.approved_at && (
+                  <Text style={localStyles.meta}>
+                    Review OK：{ins.approver_name ?? ''} {ins.approved_at.replace('T', ' ').slice(0, 16)}
+                  </Text>
+                )}
+                {ins.sent_at && (
+                  <Text style={localStyles.meta}>
+                    已寄送：{ins.sent_at.replace('T', ' ').slice(0, 16)} → {ins.sent_to}
+                  </Text>
+                )}
+                <View style={{ gap: 8, marginTop: 8 }}>
+                  <Button label="預覽報告 PDF" variant="outline" onPress={previewReport} />
+                  {ins.status === 'signed' && can('report.manage') && <Button label="Review OK（確認報告內容）" variant="secondary" onPress={approve} />}
+                  {ins.status === 'approved' && can('report.manage') && (
+                    <Button label="寄送報告給屋主" onPress={() => setAskEmail(true)} />
+                  )}
+                  {ins.status === 'sent' && can('report.manage') && (
+                    <Button label="重新寄送報告" variant="outline" onPress={() => setAskEmail(true)} />
+                  )}
+                  {ins.status === 'approved' && can('report.manage') && (
+                    <Text style={[localStyles.link, { textAlign: 'center' }]} onPress={unapprove}>取消確認</Text>
+                  )}
+                  {ins.status === 'signed' && can('inspection.edit') && (
+                    <Text style={[localStyles.link, { textAlign: 'center' }]} onPress={reopen}>重新開啟（清除簽名後修改）</Text>
                   )}
                 </View>
-                {item.points.map((p) => (
-                  <View key={p.id} style={localStyles.point}>
-                    <Pressable style={localStyles.pointHead} onPress={() => setPointId(p.id)}>
-                      <Text style={localStyles.pointName}>{p.name}</Text>
-                      <Text style={localStyles.pointExtra}>
-                        {p.note ? '📝 ' : ''}{p.photos.length ? `📷${p.photos.length} ` : ''}{editable ? '備註／拍照 ›' : p.note || p.photos.length ? '查看 ›' : ''}
-                      </Text>
-                    </Pressable>
-                    <View style={localStyles.results}>
-                      {RESULTS.map((r) => {
-                        const on = p.result === r.value;
-                        return (
-                          <Pressable
-                            key={r.value}
-                            disabled={!editable}
-                            onPress={() => setResult(p, r.value)}
-                            style={[localStyles.resultBtn, on && { backgroundColor: r.bg, borderColor: r.color }]}
-                          >
-                            <Text style={[localStyles.resultText, on && { color: r.color, fontWeight: '700' }]}>{r.label}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                    {!!p.note && <Text style={localStyles.note}>{p.note}</Text>}
-                    {p.photos.length > 0 && <Thumbs photos={p.photos} onPress={() => setPointId(p.id)} />}
-                  </View>
-                ))}
               </Card>
-            ))}
-          </View>
-        ))}
-
-        <Card title="整體備註與照片">
-          <NoteEditor
-            value={ins.general_note}
-            editable={editable}
-            placeholder="例如：整體狀況良好，屋主另提醒…"
-            onSave={(text) => run(null, async () => setData(await api.updateInspectionNote(bookingId, text)))}
-          />
-          <Thumbs photos={ins.general_photos} onPress={() => setPointId(-1)} />
-          {editable && <Button label="＋ 整體照片" variant="outline" onPress={() => setPointId(-1)} />}
-        </Card>
-
-        {ins.status === 'not_started' || ins.status === 'in_progress' ? (
-          editable && (
-            <Button
-              label={done ? '完成檢查，請屋主簽名' : `還有 ${ins.total - ins.checked} 個檢查點未填寫`}
-              disabled={!done}
-              onPress={() => router.push({ pathname: '/inspection/[bookingId]/sign', params: { bookingId: String(bookingId) } })}
-            />
-          )
-        ) : (
-          <Card title="屋主簽名">
-            {ins.signature_url && <Image source={{ uri: ins.signature_url }} style={localStyles.signature} resizeMode="contain" />}
-            <Text style={localStyles.meta}>
-              {ins.signer_name}　{ins.signed_at?.replace('T', ' ').slice(0, 16)}
-              {ins.inspector_name ? `｜驗屋人員 ${ins.inspector_name}` : ''}
-            </Text>
-          </Card>
-        )}
-
-        {(ins.status === 'signed' || ins.status === 'approved' || ins.status === 'sent') && (
-          <Card title="報告">
-            <Steps status={ins.status} />
-            {ins.approved_at && (
-              <Text style={localStyles.meta}>
-                Review OK：{ins.approver_name ?? ''} {ins.approved_at.replace('T', ' ').slice(0, 16)}
-              </Text>
             )}
-            {ins.sent_at && (
-              <Text style={localStyles.meta}>
-                已寄送：{ins.sent_at.replace('T', ' ').slice(0, 16)} → {ins.sent_to}
-              </Text>
-            )}
-            <View style={{ gap: 8, marginTop: 8 }}>
-              <Button label="預覽報告 PDF" variant="outline" onPress={previewReport} />
-              {ins.status === 'signed' && can('report.manage') && <Button label="Review OK（確認報告內容）" variant="secondary" onPress={approve} />}
-              {ins.status === 'approved' && can('report.manage') && (
-                <Button label="寄送報告給屋主" onPress={() => setAskEmail(true)} />
+            <Card title="外部報告 PDF">
+              {ins.external_report ? (
+                <>
+                  <Text style={localStyles.meta}>📄 {ins.external_report.filename}（{(ins.external_report.size / 1024 / 1024).toFixed(1)} MB）</Text>
+                  <Text style={localStyles.meta}>
+                    {ins.external_report.uploaded_at.replace('T', ' ').slice(0, 16)} 上傳{ins.external_report.uploaded_by ? `｜${ins.external_report.uploaded_by}` : ''}
+                  </Text>
+                  <View style={{ gap: 8, marginTop: 8 }}>
+                    <Button label="開啟外部報告" variant="outline" onPress={() => Linking.openURL(ins.external_report!.url)} />
+                    {can('report.manage') && ins.upload_enabled && <Button label="上傳新版本（取代）" onPress={uploadExternal} />}
+                    {can('report.manage') && !ins.upload_enabled && (
+                      <Text style={[localStyles.link, { textAlign: 'center' }]} onPress={allowReupload}>開啟上傳開關（允許重新上傳）</Text>
+                    )}
+                    {can('report.manage') && (
+                      <Text style={[localStyles.link, { textAlign: 'center', color: colors.danger }]} onPress={deleteExternal}>刪除外部報告</Text>
+                    )}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={localStyles.meta}>代驗屋公司或其他單位提供的報告（單一 PDF、30MB 以內）。上傳後會自動關閉此戶的上傳開關，寄送報告時一併附上。</Text>
+                  {can('report.manage') && (
+                    ins.upload_enabled
+                      ? <View style={{ marginTop: 8 }}><Button label="上傳外部報告 PDF" variant="outline" onPress={uploadExternal} /></View>
+                      : <Text style={[localStyles.link, { textAlign: 'center', marginTop: 8 }]} onPress={allowReupload}>上傳開關已關閉，點此開啟</Text>
+                  )}
+                </>
               )}
-              {ins.status === 'sent' && can('report.manage') && (
-                <Button label="重新寄送報告" variant="outline" onPress={() => setAskEmail(true)} />
-              )}
-              {ins.status === 'approved' && can('report.manage') && (
-                <Text style={[localStyles.link, { textAlign: 'center' }]} onPress={unapprove}>取消確認</Text>
-              )}
-              {ins.status === 'signed' && can('inspection.edit') && (
-                <Text style={[localStyles.link, { textAlign: 'center' }]} onPress={reopen}>重新開啟（清除簽名後修改）</Text>
-              )}
-            </View>
-          </Card>
+            </Card>
+          </>
         )}
-        <Card title="外部報告 PDF">
-          {ins.external_report ? (
-            <>
-              <Text style={localStyles.meta}>📄 {ins.external_report.filename}（{(ins.external_report.size / 1024 / 1024).toFixed(1)} MB）</Text>
-              <Text style={localStyles.meta}>
-                {ins.external_report.uploaded_at.replace('T', ' ').slice(0, 16)} 上傳{ins.external_report.uploaded_by ? `｜${ins.external_report.uploaded_by}` : ''}
-              </Text>
-              <View style={{ gap: 8, marginTop: 8 }}>
-                <Button label="開啟外部報告" variant="outline" onPress={() => Linking.openURL(ins.external_report!.url)} />
-                {can('report.manage') && ins.upload_enabled && <Button label="上傳新版本（取代）" onPress={uploadExternal} />}
-                {can('report.manage') && !ins.upload_enabled && (
-                  <Text style={[localStyles.link, { textAlign: 'center' }]} onPress={allowReupload}>開啟上傳開關（允許重新上傳）</Text>
-                )}
-                {can('report.manage') && (
-                  <Text style={[localStyles.link, { textAlign: 'center', color: colors.danger }]} onPress={deleteExternal}>刪除外部報告</Text>
-                )}
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={localStyles.meta}>代驗屋公司或其他單位提供的報告（單一 PDF、30MB 以內）。上傳後會自動關閉此戶的上傳開關，寄送報告時一併附上。</Text>
-              {can('report.manage') && (
-                ins.upload_enabled
-                  ? <View style={{ marginTop: 8 }}><Button label="上傳外部報告 PDF" variant="outline" onPress={uploadExternal} /></View>
-                  : <Text style={[localStyles.link, { textAlign: 'center', marginTop: 8 }]} onPress={allowReupload}>上傳開關已關閉，點此開啟</Text>
-              )}
-            </>
-          )}
-        </Card>
         <View style={{ height: 30 }} />
       </ScrollView>
 
@@ -501,6 +530,7 @@ const localStyles = StyleSheet.create({
   badge: { fontSize: 12, fontWeight: '600', borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   meta: { fontSize: 14, color: colors.muted, marginTop: 2 },
   link: { color: colors.primary },
+  checkedIn: { fontSize: 17, fontWeight: '700', color: colors.green },
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#e5e7eb', marginTop: 10, overflow: 'hidden' },
   progressBar: { height: 8, backgroundColor: colors.green },
   category: { fontSize: 15, fontWeight: '700', color: colors.muted, marginTop: 8, marginLeft: 4 },

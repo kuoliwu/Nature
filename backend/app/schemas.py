@@ -60,6 +60,7 @@ class ProjectOut(ProjectIn):
     created_at: datetime
     unit_count: int = 0
     batch_count: int = 0
+    batch_counts: dict[str, int] = {}  # 各階段的預約設定數：visit / inspection / health_check
 
 
 class UnitIn(BaseModel):
@@ -155,7 +156,7 @@ class TimeRange(BaseModel):
 
 class BatchIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    service_type: str = Field("health_check", pattern="^(inspection|health_check)$")
+    service_type: str = Field("health_check", pattern="^(visit|inspection|health_check)$")
     start_date: date
     end_date: date
     day_start: time = Field(time(9, 0), description="每天第一個時段開始")
@@ -512,10 +513,12 @@ class ScheduleItem(BaseModel):
     end_time: time
     contact_name: str
     contact_phone: str
-    status: str  # not_started / in_progress / signed / approved / sent
+    status: str  # not_started / in_progress / signed / approved / sent；參觀為 not_started / checked_in
     checked: int
     total: int
     fail_count: int
+    service_type: str = "inspection"  # visit / inspection / health_check
+    checked_in_at: datetime | None = None
 
 
 class InspectionPhotoOut(BaseModel):
@@ -557,6 +560,8 @@ class InspectionOut(BaseModel):
     contact_name: str
     contact_phone: str
     status: str
+    service_type: str
+    checked_in_at: datetime | None
     general_note: str | None
     inspector_name: str | None
     signer_name: str | None

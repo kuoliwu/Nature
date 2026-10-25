@@ -142,11 +142,13 @@ def create_batch(project_id: int, body: BatchIn, db: Session = Depends(get_db)):
 
 
 @router.get("/projects/{project_id}/batches", response_model=list[BatchOut])
-def list_batches(project_id: int, db: Session = Depends(get_db)):
+def list_batches(project_id: int, service: ServiceType | None = None, db: Session = Depends(get_db)):
+    """service：只列某階段（visit 參觀 / inspection 驗屋 / health_check 健檢）"""
     get_project_or_404(db, project_id)
-    batches = db.scalars(
-        select(BookingBatch).where(BookingBatch.project_id == project_id).order_by(BookingBatch.id.desc())
-    )
+    query = select(BookingBatch).where(BookingBatch.project_id == project_id).order_by(BookingBatch.id.desc())
+    if service is not None:
+        query = query.where(BookingBatch.service_type == service)
+    batches = db.scalars(query)
     return [_batch_out(db, b) for b in batches]
 
 

@@ -2,6 +2,7 @@
 已有檢查紀錄的不能刪除（會遺失歷史），只能停用；停用後新的驗屋不會出現，舊紀錄保留。"""
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -15,6 +16,7 @@ from app.seed import ensure_project_checklist
 from app.services.auth import get_current_user, require_permission
 
 router = APIRouter(tags=["檢查項目清單"], dependencies=[Depends(get_current_user)])
+ChecklistService = Literal["inspection", "health_check"]
 manage = [Depends(require_permission("project.manage"))]
 
 
@@ -46,21 +48,22 @@ def _next_order(objs) -> int:
 
 
 @router.get("/projects/{project_id}/checklist", response_model=list[ChecklistCategoryOut])
-def get_checklist(project_id: int, db: Session = Depends(get_db)):
+def get_checklist(project_id: int, service: ChecklistService = "inspection", db: Session = Depends(get_db)):
+    """service：inspection 驗屋清單 / health_check 健檢清單（各自獨立）"""
     project = get_project_or_404(db, project_id)
-    ensure_project_checklist(db, project)
-    return project.checklist
+    return ensure_project_checklist(db, project, service)
 
 
 @router.post("/projects/{project_id}/checklist/categories", response_model=ChecklistCategoryOut, status_code=201, dependencies=manage)
-def add_category(project_id: int, body: NameIn, db: Session = Depends(get_db)):
+def add_category(project_id: int, body: NameIn, service: ChecklistService = "inspection", db: Session = Depends(get_db)):
     project = get_project_or_404(db, project_id)
-    ensure_project_checklist(db, project)
+    current = ensure_project_checklist(db, project, service)
     category = InspectionCategory(
         code=f"p{project.id}-{uuid.uuid4().hex[:8]}",
         name=body.name,
         project_id=project.id,
-        sort_order=_next_order(project.checklist),
+        service_type=service,
+        sort_order=_next_order(current),
     )
     db.add(category)
     db.commit()

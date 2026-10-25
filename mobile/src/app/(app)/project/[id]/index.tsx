@@ -5,6 +5,7 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { Card, HeaderButton, ListRow, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { PHASES } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
 export default function ProjectScreen() {
@@ -29,8 +30,8 @@ export default function ProjectScreen() {
 
   if (!project) return error ? <Message kind="error" text={error} /> : <Loading />;
 
-  const go = (pathname: '/project/[id]/units' | '/project/[id]/batches' | '/project/[id]/checklist') =>
-    router.push({ pathname, params: { id: String(id) } });
+  const go = (pathname: '/project/[id]/units' | '/project/[id]/batches' | '/project/[id]/checklist', extra: Record<string, string> = {}) =>
+    router.push({ pathname, params: { id: String(id), ...extra } });
 
   return (
     <ScrollView
@@ -48,10 +49,22 @@ export default function ProjectScreen() {
         {!!project.note && <Info label="備註" value={project.note} />}
       </Card>
 
-      <Text style={localStyles.section}>第一階段：建立資料</Text>
+      <Text style={localStyles.section}>第一階段：建立系統</Text>
       <ListRow title="住戶資訊" subtitle="戶別、屋主、坪數、交屋日期" right={`${project.unit_count} 戶`} onPress={() => go('/project/[id]/units')} />
-      <ListRow title="健檢日期與時段" subtitle="日期區間、30 分鐘時段、每格名額" right={`${project.batch_count} 組`} onPress={() => go('/project/[id]/batches')} />
-      <ListRow title="檢查項目清單" subtitle="窗戶、水電、其他" onPress={() => go('/project/[id]/checklist')} />
+      <ListRow title="驗屋檢查清單" subtitle="第三階段驗屋使用" onPress={() => go('/project/[id]/checklist', { service: 'inspection' })} />
+      <ListRow title="健檢檢查清單" subtitle="第四階段健檢使用" onPress={() => go('/project/[id]/checklist', { service: 'health_check' })} />
+
+      {PHASES.map((p) => (
+        <View key={p.service} style={{ gap: 10 }}>
+          <Text style={localStyles.section}>{p.phase}：{p.title}</Text>
+          <ListRow
+            title={`${p.title}日期與時段`}
+            subtitle={p.desc}
+            right={`${project.batch_counts?.[p.service] ?? 0} 組`}
+            onPress={() => go('/project/[id]/batches', { service: p.service })}
+          />
+        </View>
+      ))}
     </ScrollView>
   );
 }

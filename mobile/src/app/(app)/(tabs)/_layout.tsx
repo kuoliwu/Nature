@@ -19,7 +19,7 @@ export default function AppTabs() {
       <Tabs.Screen
         name="inspections"
         options={{
-          title: '驗屋',
+          title: '行程',
           tabBarIcon: icon('check-square-o'),
           href: can('inspection.edit') || can('booking.view') ? undefined : null,
         }}

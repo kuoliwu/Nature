@@ -3,30 +3,35 @@ import { useLayoutEffect } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text } from 'react-native';
 
 import { HeaderButton, ListRow, Message, MAX_WIDTH, colors } from '@/components/ui';
-import { api, Batch } from '@/lib/api';
+import { api, Batch, ServiceType } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { SERVICE_LABEL } from '@/lib/labels';
+import { PHASES, SERVICE_LABEL } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
 export default function BatchesScreen() {
-  const projectId = Number(useLocalSearchParams<{ id: string }>().id);
+  const params = useLocalSearchParams<{ id: string; service?: ServiceType }>();
+  const projectId = Number(params.id);
+  const service = params.service;
+  const phase = PHASES.find((p) => p.service === service);
   const { can } = useAuth();
   const navigation = useNavigation();
-  const { data: batches, error, refresh, refreshing } = useLoad(() => api.batches(projectId), [projectId]);
+  const { data: batches, error, refresh, refreshing } = useLoad(() => api.batches(projectId, service), [projectId, service]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: '健檢日期與時段',
+      title: phase ? `${phase.title}：日期與時段` : '預約日期與時段',
       headerRight: can('batch.manage')
         ? () => (
             <HeaderButton
               label="＋ 新增"
-              onPress={() => router.push({ pathname: '/project/[id]/batch-new', params: { id: String(projectId) } })}
+              onPress={() =>
+                router.push({ pathname: '/project/[id]/batch-new', params: { id: String(projectId), ...(service ? { service } : {}) } })
+              }
             />
           )
         : undefined,
     });
-  }, [navigation, can, projectId]);
+  }, [navigation, can, projectId, service, phase]);
 
   return (
     <FlatList
@@ -40,7 +45,7 @@ export default function BatchesScreen() {
       ListEmptyComponent={
         batches ? (
           <Text style={localStyles.empty}>
-            {can('batch.manage') ? '還沒有設定健檢日期。點右上角「＋ 新增」選擇日期區間，系統會自動產生 30 分鐘的時段。' : '還沒有設定健檢日期'}
+            {can('batch.manage') ? '還沒有設定日期。點右上角「＋ 新增」選擇日期區間，系統會自動產生 30 分鐘的時段。' : '還沒有設定日期'}
           </Text>
         ) : undefined
       }
