@@ -540,8 +540,31 @@ Start-ScheduledTask -TaskName InspectionServer     # 立即啟動（之後每次
 
 - 後端在背景執行，沒有視窗；日誌在 `backend/logs/server.log`。
 - 手動在終端機執行 `python run.py` 時，如果背景已經在跑，會提示 port 已被占用，屬正常。
-- 移除自動啟動：執行同資料夾的 `uninstall-autostart.ps1`。
 - 電腦請設定**不要自動睡眠**（設定 → 系統 → 電源），否則睡眠期間外部無法預約。
+
+**取消開機自動啟動（停止背景執行）**
+
+分兩步：① 移除自動啟動的設定 ② 停掉現在正在背景跑的後端。只做 ① 的話，這次開機已啟動的後端會繼續跑到下次關機。
+
+```powershell
+# ① 移除自動啟動（Windows PowerShell，一般權限即可）
+powershell -ExecutionPolicy Bypass -File \\wsl.localhost\Ubuntu-24.04\home\b9211\stock\nature\nature\deploy\windows\uninstall-autostart.ps1
+```
+
+```bash
+# ② 停止目前在背景執行的後端（WSL 終端機）
+pkill -f ".venv/bin/python run.py"
+```
+
+- 確認已停止：`ss -ltn | grep -E ":(8000|8001)\b"` 沒有任何輸出就是已經停了。
+- ② 也可以改在 PowerShell 執行 `wsl --shutdown`，但它會關閉**所有** WSL 程式（包含開著的終端機、Expo），比較粗暴。
+- 只想**暫時停用**、之後還要恢復時，不用移除，改用：
+  ```powershell
+  Disable-ScheduledTask -TaskName InspectionServer   # 暫停自動啟動
+  Enable-ScheduledTask  -TaskName InspectionServer   # 恢復自動啟動
+  ```
+- 查看目前狀態：`Get-ScheduledTask -TaskName InspectionServer`（State 為 Ready＝啟用、Disabled＝暫停；查不到＝已移除）。
+- 取消後要用的時候，照舊在終端機手動執行 `python run.py` 即可。
 
 ### 每日備份
 
