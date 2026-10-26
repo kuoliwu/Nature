@@ -113,7 +113,7 @@ export default function UnitEditScreen() {
           onChangeText={set('owner_email')}
           keyboardType="email-address"
           autoCapitalize="none"
-          hint="第二階段會寄驗屋邀請到這個信箱"
+          hint="預約參觀／驗屋／健檢的邀請會寄到這個信箱"
           editable={editable}
         />
       </Card>

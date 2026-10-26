@@ -61,6 +61,25 @@ export type Project = Required<ProjectInput> & {
   unit_count: number;
   batch_count: number;
   batch_counts: Record<ServiceType, number>;
+  covers: Record<ServiceType, string | null>; // 屋主預約頁封面照片（短效網址）
+};
+
+// 售服時間軸：1 新建案 → 2 預約參觀 → 3 預約驗屋 → 4 驗屋 → 5 履歷手冊 → 6 預約健檢 → 7 健檢
+export type TimelineStatus = 'done' | 'active' | 'todo';
+export type TimelineStep = {
+  key: string;
+  label: string;
+  status: TimelineStatus;
+  done: number;
+  total: number;
+  date_from: string | null;
+  date_to: string | null;
+  note: string;
+};
+export type ProjectTimeline = {
+  project: { id: number; name: string; address: string; unit_count: number };
+  current: number; // 第一個還沒完成的步驟（0 起算）
+  steps: TimelineStep[];
 };
 
 export type UnitImportResult = {
@@ -385,6 +404,10 @@ export const api = {
   deleteProject: (id: number) => request<null>(`/projects/${id}`, { method: 'DELETE' }),
 
   dashboard: (projectId: number) => request<Dashboard>(`/projects/${projectId}/dashboard`),
+  timelines: () => request<ProjectTimeline[]>('/projects/timeline'),
+  timeline: (projectId: number) => request<ProjectTimeline>(`/projects/${projectId}/timeline`),
+  deleteCover: (projectId: number, service: ServiceType) =>
+    request<Project>(`/projects/${projectId}/covers/${service}`, { method: 'DELETE' }),
   reportExportLink: (projectId: number, format: 'html' | 'xlsx') =>
     request<{ url: string; filename: string }>(`/projects/${projectId}/report-export-link?format=${format}`, { method: 'POST' }),
 
