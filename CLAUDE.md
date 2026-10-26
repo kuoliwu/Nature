@@ -60,11 +60,11 @@ deploy/windows/         install/uninstall-autostart.ps1（UTF-8 BOM！）
 # 後端
 cd backend && source .venv/bin/activate
 python3 run.py [--tunnel]         # 不需先 activate，會自動用 .venv；--tunnel：Cloudflare 快速通道；使用者已改用 Tailscale Funnel（PUBLIC_BASE_URL）
-timeout 300 .venv/bin/python -m pytest -q     # 目前 94 passed
+timeout 300 .venv/bin/python -m pytest -q     # 目前 99 passed
 # APP
 cd mobile
 npm run wifi | npm run 5g [-- --clear]        # Expo 開發伺服器（QR code 用正確 IP）
-npx tsc --noEmit && npm test                  # 型別 + 單元測試（13 passed）
+npx tsc --noEmit && npm test                  # 型別 + 單元測試（15 passed）
 # 不要跑 npx expo lint：專案沒有 ESLint，它會自動安裝並改 package.json
 npx expo export --platform android --platform ios --output-dir <tmp>   # 打包檢查
 npm run build:web                             # 電腦版 → backend/webapp（baseUrl=/app）
@@ -84,6 +84,8 @@ npx -y expo-doctor
 - **不超賣**：`services/booking.book()` 先 insert/flush 再數該格有效預約，超過就 rollback（SQLite 寫入序列化）。
 - **四階段 / 服務**：`ServiceType` = visit（參觀）/ inspection（驗屋）/ health_check（健檢）；批次各屬一種服務。`CHECKLIST_SERVICES=("inspection","health_check")`。參觀沒有清單、報告、提醒：`POST /bookings/{id}/checkin`（`Booking.checked_in_at`）＝完成。
 - **檢查清單**：`inspection_categories.project_id` NULL＝公司範本；建案的清單以 `service_type` 分驗屋／健檢兩份（`ensure_project_checklist(db, project, service)`，舊資料由 `migrate_checklist_services` 補成 inspection）；建案建立時兩份都 `copy_template_to_project`；已有結果的檢查點不能刪只能停用；驗屋畫面保留「已停用但有結果」的點（也保留舊健檢預約在驗屋清單上的結果）。
+- **售服七步驟 / 時間軸**：1 新建案 → 2 預約參觀 → 3 預約驗屋 → 4 驗屋 → 5 生產履歷＋住屋手冊 → 6 預約健檢 → 7 健檢。`services/timeline.build_timeline`（用 `dashboard.collect_phases`）算每步 done/active/todo：全部住戶完成，或日期已過且沒有已預約未完成；`GET /projects/timeline`（須在 `/projects/{project_id}` 之前宣告）與 `/projects/{id}/timeline`。APP `components/Timeline.tsx`（標籤上下交錯）＋`lib/timeline.ts`（純計算）。第 5 步目前是佔位（todo）。
+- **預約頁封面照片**：`Project.{visit,inspection,health_check}_cover_path`（驗屋＝預售屋、健檢＝成屋、參觀選填）；`POST/DELETE /projects/{id}/covers/{service}`；APP 用下載 token（kind=project_cover）；屋主頁 `cover_url` → `/api/public/book/{token}/cover?v=檔名`。影像共用 `inspection_media.save_image`。
 - **儀表板 / 報表**：`services/dashboard.build_dashboard` 是唯一數字來源（APP 儀表板、HTML、xlsx 共用）；住戶在每個階段的狀態互斥：completed > booked > invited > not_invited。色票經 dataviz 驗證，APP `charts.tsx` 與 `project_report.py` 同一組。
 - **Excel 匯出匯入**（`/sheets/{name}/export-link`、`/sheets/{name}/import?dry_run=`；name = projects/checklist/slots/bookings/users/results）：`services/sheets.py` 框架（Col 型別轉換、說明工作表、CSV BOM、Big5）；每種資料在 `sheet_datasets.py` 定義 export_rows/apply/權限/範圍（global、project_service、batch）。規則：關鍵欄位比對、檔案沒有的不刪、任何錯誤整份 rollback、**匯出後原封不動匯回必須零變動**（測試涵蓋全部 xlsx+csv）。住戶仍用較早的 `units_excel.py`。預約匯入不寄信，寫入後才檢查名額；結果匯入只在 inspection in_progress 時能改。
 - **Email**：`SMTP_HOST` 空白時寫入 `storage/outbox/*.eml`（`python -m scripts.show_outbox` 查看）；寄信放 BackgroundTasks、失敗只記 log。
