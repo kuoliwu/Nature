@@ -8,7 +8,8 @@
 - 偏好**一步一步**做：說明要做什麼 → 實作 → 自己測過（測試 + 實際跑）→ 請使用者實測 → 使用者確認後才 **commit**。
 - 分支 `develop`（`main` 只有初始 commit）；每個里程碑一個 commit，結尾加 `Co-Authored-By` 行。不 push。
 - `backend/.env.example` ＝ 實際設定（含 SMTP 密碼、鹽值），使用者決定放進 git（repo 私人）；`./install.sh`（＝`run.py --install`）新環境執行一次會複製成 `.env`。
-- commit 前檢查不要帶入：`.env`、`backend/data/*`、`backend/storage/*`、`backend/backups/`、`backend/webapp/`、`backend/logs/`、字型檔。
+- `backend/data/inspection.db`（資料庫；`.jwt_secret` 不進 git，新環境自動產生、需重新登入）與 `backend/storage/`（照片、簽名、報告）也放進 git，使用者決定；commit 資料前要先停掉 `run.py`（避免 WAL 未寫回）。
+- commit 前檢查不要帶入：`.env`、`*.db-wal`/`*.db-shm`、`backend/backups/`、`backend/webapp/`、`backend/logs/`、字型檔。
 
 ## 業務流程（四階段）與里程碑（全部完成）
 

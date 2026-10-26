@@ -4,10 +4,11 @@ __pycache__/
 .env
 .pytest_cache/
 
-backend/data/*
-!backend/data/.gitkeep
-backend/storage/*
-!backend/storage/.gitkeep
+# 資料庫與上傳檔案放進 git（repo 私人）；SQLite 暫存檔不放
+*.db-wal
+*.db-shm
+*.db-journal
+backend/data/.jwt_secret
 
 backend/fonts/*
 !backend/fonts/.gitkeep
