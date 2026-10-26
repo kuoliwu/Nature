@@ -32,7 +32,8 @@ STAGES = ("completed", "booked", "invited", "not_invited")
 STAGE_LABEL = {"completed": "已完成", "booked": "已預約未完成", "invited": "已邀請未預約", "not_invited": "未邀請"}
 
 
-def build_dashboard(db: Session, project: Project) -> dict:
+def collect_phases(db: Session, project: Project) -> dict:
+    """各服務階段的住戶進度；儀表板與售服時間軸共用"""
     units = list(db.scalars(select(Unit).where(Unit.project_id == project.id)))
     unit_ids = {u.id for u in units}
     batches = list(db.scalars(select(BookingBatch).where(BookingBatch.project_id == project.id)))
@@ -70,9 +71,12 @@ def build_dashboard(db: Session, project: Project) -> dict:
             "invited": len((invited[service] & unit_ids) - booked_units),
         }
         stages["not_invited"] = max(len(units) - sum(stages.values()), 0)
+        slot_dates = [s.slot_date for s in slots]
         phases.append({
             "service": service.value,
             "label": SERVICE_LABEL[service],
+            "date_from": min(slot_dates).isoformat() if slot_dates else None,
+            "date_to": max(slot_dates).isoformat() if slot_dates else None,
             "batches": len(svc_batches),
             "slots": len(slots),
             "open_slots": sum(1 for s in slots if s.is_open),
@@ -82,6 +86,13 @@ def build_dashboard(db: Session, project: Project) -> dict:
             "reports_sent": report_sent if service.value in CHECKLIST_SERVICES else None,
             "has_reports": service.value in CHECKLIST_SERVICES,
         })
+    return {"units": units, "batches": batches, "batch_service": batch_service, "bookings": bookings, "phases": phases}
+
+
+def build_dashboard(db: Session, project: Project) -> dict:
+    collected = collect_phases(db, project)
+    units, batches, bookings, phases = collected["units"], collected["batches"], collected["bookings"], collected["phases"]
+    batch_service = collected["batch_service"]
 
     # --- 每日預約數（依服務）---
     slot_of = {s.id: s for b in batches for s in b.slots}

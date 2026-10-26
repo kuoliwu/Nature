@@ -63,6 +63,7 @@ class ProjectOut(ProjectIn):
     unit_count: int = 0
     batch_count: int = 0
     batch_counts: dict[str, int] = {}  # 各階段的預約設定數：visit / inspection / health_check
+    covers: dict[str, str | None] = {}  # 屋主預約頁封面照片網址（短效連結）：visit / inspection / health_check
 
 
 class UnitIn(BaseModel):
@@ -497,6 +498,7 @@ class PublicBookingInfo(BaseModel):
     place: str
     batch_name: str
     service_label: str
+    cover_url: str | None = None  # 頁面最上方的封面照片（驗屋＝預售屋、健檢＝成屋）
     description: str | None
     closed_reason: str | None  # 非 None 代表目前不能預約
     close_at: datetime | None

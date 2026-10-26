@@ -17,7 +17,11 @@ class MediaError(ValueError):
 
 
 def save_photo(data: bytes, booking_id: int) -> tuple[str, int, int]:
-    """依 EXIF 轉正、縮到長邊 1600、存成 JPEG；回傳 (相對路徑, 寬, 高)"""
+    return save_image(data, Path("inspections") / str(booking_id))
+
+
+def save_image(data: bytes, folder: Path) -> tuple[str, int, int]:
+    """依 EXIF 轉正、縮到長邊 1600、存成 JPEG 放在 storage/folder；回傳 (相對路徑, 寬, 高)"""
     if len(data) > MAX_PHOTO_BYTES:
         raise MediaError("照片超過 15MB")
     try:
@@ -28,7 +32,7 @@ def save_photo(data: bytes, booking_id: int) -> tuple[str, int, int]:
     img = ImageOps.exif_transpose(img).convert("RGB")
     img.thumbnail((MAX_PHOTO_SIDE, MAX_PHOTO_SIDE))
 
-    rel = Path("inspections") / str(booking_id) / f"{uuid.uuid4().hex}.jpg"
+    rel = folder / f"{uuid.uuid4().hex}.jpg"
     path = settings.storage_dir / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     img.save(path, format="JPEG", quality=82, optimize=True)

@@ -163,6 +163,10 @@ class Project(TimestampMixin, Base):
     community_address: Mapped[str | None] = mapped_column(String(255))  # 社區地址
     community_manager: Mapped[str | None] = mapped_column(String(50))  # 社區經理
     note: Mapped[str | None] = mapped_column(Text)
+    # 屋主預約頁最上方的封面照片（storage 相對路徑）：參觀（選填）、驗屋＝預售屋照片、健檢＝成屋照片
+    visit_cover_path: Mapped[str | None] = mapped_column(String(255))
+    inspection_cover_path: Mapped[str | None] = mapped_column(String(255))
+    health_check_cover_path: Mapped[str | None] = mapped_column(String(255))
 
     units: Mapped[list["Unit"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     batches: Mapped[list["BookingBatch"]] = relationship(

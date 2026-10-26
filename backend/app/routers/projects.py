@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
@@ -8,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.models import (
     CHECKLIST_SERVICES,
@@ -35,6 +37,8 @@ from app.schemas import (
 )
 from app.seed import copy_template_to_project
 from app.services.dashboard import build_dashboard
+from app.services.inspection_media import MediaError, save_image
+from app.services.timeline import build_timeline
 from app.services.project_report import build_html, build_xlsx
 from app.services.auth import create_download_token, get_current_user, read_download_token, require_permission
 from app.services.security import hash_id_number
@@ -63,7 +67,14 @@ def _get_unit(db: Session, unit_id: int) -> Unit:
     return unit
 
 
-def _project_out(db: Session, project: Project) -> ProjectOut:
+COVER_MINUTES = 12 * 60
+
+
+def cover_path_attr(service: ServiceType) -> str:
+    return f"{service.value}_cover_path"
+
+
+def _project_out(db: Session, project: Project, request: Request) -> ProjectOut:
     unit_count = db.scalar(select(func.count(Unit.id)).where(Unit.project_id == project.id))
     batch_count = db.scalar(select(func.count(BookingBatch.id)).where(BookingBatch.project_id == project.id))
     out = ProjectOut.model_validate(project)
@@ -74,6 +85,13 @@ def _project_out(db: Session, project: Project) -> ProjectOut:
         .group_by(BookingBatch.service_type)
     ).all()
     out.batch_counts = {s.value: 0 for s in ServiceType} | {s.value: n for s, n in rows}
+    base = str(request.base_url).rstrip("/")
+    for s in ServiceType:
+        url = None
+        if getattr(project, cover_path_attr(s)):
+            token, _ = create_download_token({"kind": "project_cover", "project_id": project.id, "service": s.value}, minutes=COVER_MINUTES)
+            url = f"{base}/downloads/{token}"
+        out.covers[s.value] = url
     return out
 
 
@@ -81,35 +99,75 @@ def _project_out(db: Session, project: Project) -> ProjectOut:
 # 建案
 # ---------------------------------------------------------------------------
 @router.post("/projects", response_model=ProjectOut, status_code=201, tags=["建案"], dependencies=manage)
-def create_project(body: ProjectIn, db: Session = Depends(get_db)):
+def create_project(body: ProjectIn, request: Request, db: Session = Depends(get_db)):
     project = Project(**body.model_dump())
     db.add(project)
     db.flush()
     for service in CHECKLIST_SERVICES:  # 驗屋、健檢各一份，從公司範本複製
         copy_template_to_project(db, project, service)
     db.commit()
-    return _project_out(db, project)
+    return _project_out(db, project, request)
 
 
 @router.get("/projects", response_model=list[ProjectOut], tags=["建案"])
-def list_projects(db: Session = Depends(get_db)):
-    return [_project_out(db, p) for p in db.scalars(select(Project).order_by(Project.id.desc()))]
+def list_projects(request: Request, db: Session = Depends(get_db)):
+    return [_project_out(db, p, request) for p in db.scalars(select(Project).order_by(Project.id.desc()))]
+
+
+# 要放在 /projects/{project_id} 之前，否則 timeline 會被當成建案編號
+@router.get("/projects/timeline", tags=["建案"], summary="全部建案的售服時間軸（七個步驟走到哪裡）")
+def projects_timeline(db: Session = Depends(get_db)) -> list[dict]:
+    return [build_timeline(db, p) for p in db.scalars(select(Project).order_by(Project.id.desc()))]
 
 
 @router.get("/projects/{project_id}", response_model=ProjectOut, tags=["建案"])
-def get_project(project_id: int, db: Session = Depends(get_db)):
-    return _project_out(db, get_project_or_404(db, project_id))
+def get_project(project_id: int, request: Request, db: Session = Depends(get_db)):
+    return _project_out(db, get_project_or_404(db, project_id), request)
+
+
+@router.get("/projects/{project_id}/timeline", tags=["建案"], summary="建案的售服時間軸")
+def project_timeline(project_id: int, db: Session = Depends(get_db)) -> dict:
+    return build_timeline(db, get_project_or_404(db, project_id))
+
+
+@router.post("/projects/{project_id}/covers/{service}", response_model=ProjectOut, tags=["建案"], dependencies=manage,
+             summary="上傳屋主預約頁封面照片（驗屋＝預售屋照片、健檢＝成屋照片、參觀選填）")
+async def upload_cover(project_id: int, service: ServiceType, request: Request, file: UploadFile = File(...),
+                       db: Session = Depends(get_db)):
+    project = get_project_or_404(db, project_id)
+    try:
+        rel, _, _ = save_image(await file.read(), Path("projects") / str(project.id))
+    except MediaError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    _remove_cover(project, service)
+    setattr(project, cover_path_attr(service), rel)
+    db.commit()
+    return _project_out(db, project, request)
+
+
+@router.delete("/projects/{project_id}/covers/{service}", response_model=ProjectOut, tags=["建案"], dependencies=manage)
+def delete_cover(project_id: int, service: ServiceType, request: Request, db: Session = Depends(get_db)):
+    project = get_project_or_404(db, project_id)
+    _remove_cover(project, service)
+    setattr(project, cover_path_attr(service), None)
+    db.commit()
+    return _project_out(db, project, request)
+
+
+def _remove_cover(project: Project, service: ServiceType) -> None:
+    if old := getattr(project, cover_path_attr(service)):
+        (settings.storage_dir / old).unlink(missing_ok=True)
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectOut, tags=["建案"], dependencies=manage)
-def update_project(project_id: int, body: ProjectUpdate, db: Session = Depends(get_db)):
+def update_project(project_id: int, body: ProjectUpdate, request: Request, db: Session = Depends(get_db)):
     project = get_project_or_404(db, project_id)
     for key, value in body.model_dump(exclude_unset=True).items():
         if key == "name" and value is None:
             continue
         setattr(project, key, value)
     db.commit()
-    return _project_out(db, project)
+    return _project_out(db, project, request)
 
 
 @router.delete("/projects/{project_id}", status_code=204, tags=["建案"], dependencies=manage)

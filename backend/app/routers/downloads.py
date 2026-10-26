@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Booking, Inspection, InspectionPhoto, Project, Report
-from app.routers.projects import project_report_response, units_export_response
+from app.models import Booking, Inspection, InspectionPhoto, Project, Report, ServiceType
+from app.routers.projects import cover_path_attr, project_report_response, units_export_response
 from app.services.auth import read_download_token
 
 router = APIRouter(tags=["下載"])
@@ -35,6 +35,12 @@ def download(token: str, db: Session = Depends(get_db)):
         from app.routers.sheets import sheet_response
 
         return sheet_response(db, payload["name"], payload, payload["fmt"])
+    if payload.get("kind") == "project_cover":
+        project = db.get(Project, payload["project_id"])
+        rel = project and getattr(project, cover_path_attr(ServiceType(payload["service"])))
+        if not rel:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "封面照片已刪除")
+        return FileResponse(settings.storage_dir / rel, media_type="image/jpeg")
     if payload.get("kind") == "photo":
         photo = db.get(InspectionPhoto, payload["id"])
         if photo is None:

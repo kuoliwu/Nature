@@ -17,10 +17,11 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import Booking, BookingBatch, BookingStatus, Unit, UnitInvite
 from app.schemas import (
@@ -214,6 +215,8 @@ def booking_info(token: str, db: Session = Depends(get_db)):
         place=unit.address or project.address or project.community_address or "",
         batch_name=batch.name,
         service_label=SERVICE_LABEL[batch.service_type],
+        # 檔名每次上傳都不同 → 換照片後瀏覽器不會用到舊的快取
+        cover_url=f"/api/public/book/{token}/cover?v={Path(cover).stem}" if (cover := _cover(batch)) else None,
         description=batch.description,
         closed_reason=booking_window(batch),
         close_at=batch.booking_close_at,
@@ -224,6 +227,18 @@ def booking_info(token: str, db: Session = Depends(get_db)):
             for d, slots in available_days(db, batch)
         ],
     )
+
+
+def _cover(batch: BookingBatch) -> str | None:
+    return getattr(batch.project, f"{batch.service_type.value}_cover_path")
+
+
+@public.get("/api/public/book/{token}/cover", include_in_schema=False)
+def booking_cover(token: str, db: Session = Depends(get_db)):
+    cover = _cover(_get_invite(db, token).batch)
+    if not cover:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "沒有封面照片")
+    return FileResponse(settings.storage_dir / cover, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 @public.post("/api/public/book/{token}", response_model=PublicBookOut)
