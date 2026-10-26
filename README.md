@@ -17,6 +17,7 @@
 
 ## ⚡ 快速指令（日常使用）
 
+> ⚠️ **每次換新環境（新電腦、重新下載 / clone 程式到新資料夾）都要先在專案根目錄執行一次 `./install.sh`**，再啟動後端（見第 1 節）。
 > 首次安裝請先完成第 1～3 節；電腦需安裝並登入 Tailscale（第 6 節），手機不需要。
 
 **終端機 ①：啟動後端**（Wi-Fi 與 5G 都一樣）
@@ -78,26 +79,30 @@ Expo Go 需要連到電腦的開發伺服器（8081），無法經過上面的�
 
 ---
 
-## 1. 首次安裝後端
+## 1. 首次安裝（每個新環境都要執行一次 install.sh）
 
-在 WSL 終端機執行：
+**新電腦、或把程式重新下載 / clone 到新資料夾時，一定要先執行一次：**
 
 ```bash
-cd ~/stock/nature/nature/backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+cd <專案資料夾>      # 例如 ~/stock/nature_1026/nature
+./install.sh
 ```
 
-編輯 `backend/.env`，**一定要改**這兩個值：
+`install.sh` 會（已經有的會略過）：
 
-| 變數 | 用途 |
+| 步驟 | 內容 |
 |---|---|
-| `ADMIN_INIT_KEY` | APP 呼叫管理 API 時帶的金鑰，請改成隨機長字串 |
-| `ID_HASH_SALT` | 身分證雜湊用的鹽值，**上線後不可再改**，否則舊資料比對不到 |
+| 建立 `backend/.venv` | Python 虛擬環境（Ubuntu 若失敗：`sudo apt install python3-venv`） |
+| 安裝 Python 套件 | `pip install -r requirements.txt` |
+| 建立 `backend/.env` | 由 `backend/.env.example` 複製；**`.env.example` 就是實際使用中的設定（含 SMTP 密碼、ADMIN_INIT_KEY、ID_HASH_SALT）** |
+| 建置電腦版（`/app`） | 在 `mobile` 執行 `npm ci`、`npm run build:web`（需要 Node.js / nvm） |
 
-隨機字串可以用 `python -c "import secrets; print(secrets.token_urlsafe(32))"` 產生。
+之後每次啟動只要 `python3 backend/run.py`（啟動時也會再檢查一次，`requirements.txt` 有變動會自動補裝套件）。
+
+- 改了設定時，`.env` 與 `.env.example` 請一起改，下次新環境才會用到新設定。
+- `ID_HASH_SALT` **上線後不可再改**，否則舊資料的身分證比對不到。
+- 資料庫不在程式碼裡：要沿用舊資料，把舊資料夾的 `backend/data/`（含 `inspection.db`、`.jwt_secret`）與 `backend/storage/`（照片、報告）複製過來。
+- ⚠️ `.env.example` 含密碼，會進 git；repo 請保持私人，不要公開。
 
 ---
 

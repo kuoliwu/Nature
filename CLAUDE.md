@@ -7,6 +7,7 @@
 - 使用者用**繁體中文**溝通；回覆、UI 文字、程式註解都用繁體中文。
 - 偏好**一步一步**做：說明要做什麼 → 實作 → 自己測過（測試 + 實際跑）→ 請使用者實測 → 使用者確認後才 **commit**。
 - 分支 `develop`（`main` 只有初始 commit）；每個里程碑一個 commit，結尾加 `Co-Authored-By` 行。不 push。
+- `backend/.env.example` ＝ 實際設定（含 SMTP 密碼、鹽值），使用者決定放進 git（repo 私人）；`./install.sh`（＝`run.py --install`）新環境執行一次會複製成 `.env`。
 - commit 前檢查不要帶入：`.env`、`backend/data/*`、`backend/storage/*`、`backend/backups/`、`backend/webapp/`、`backend/logs/`、字型檔。
 
 ## 業務流程（四階段）與里程碑（全部完成）
@@ -111,7 +112,7 @@ npx -y expo-doctor
 - 改了 APP 程式後要 `npm run build:web`，否則 /app 還是舊版（曾因舊版把 https 主機改成 http 而連不上）。iPhone 主畫面網頁版會記住加入時的網址。Expo Go 開發仍需區網或手機 Tailscale（8081 不經 Funnel）。
 - **Windows 自己連 192.168.68.109 會逾時**（mirrored 限制）→ 電腦上一律用 `localhost`。
 - 防火牆 8000、8081 已開（Windows + Hyper-V 兩道）。
-- `run.py` 自己會改用旁邊的 `.venv`（`use_project_venv` re-exec），使用者不想在 `.bashrc` 寫死路徑。`~/.bashrc` 結尾 activate 的是另一個專案的 `~/stock/.venv`。venv activate 必須在 nvm 之後，否則再 activate 時 PATH 被還原 → 跑到 Windows 版 npm（`/mnt/c/Program Files/nodejs`）。症狀：UNC 路徑錯誤、ENOTEMPTY。急救：`source ~/.nvm/nvm.sh`。
+- `run.py` 啟動前 `prepare_environment()` 自動補環境：沒有 `.venv` 就建立、requirements.txt 雜湊變了就 pip install、沒有 `.env` 就從 example 複製、沒有 `webapp/` 就 npm ci + build:web（找 nvm 的 npm，避開 /mnt/c）；接著改用旁邊的 `.venv`（`use_project_venv` re-exec），使用者不想在 `.bashrc` 寫死路徑。`~/.bashrc` 結尾 activate 的是另一個專案的 `~/stock/.venv`。venv activate 必須在 nvm 之後，否則再 activate 時 PATH 被還原 → 跑到 Windows 版 npm（`/mnt/c/Program Files/nodejs`）。症狀：UNC 路徑錯誤、ENOTEMPTY。急救：`source ~/.nvm/nvm.sh`。
 - cloudflared 在 `~/.local/bin`；Expo 帳號 `service.hopo`，EAS projectId 在 `mobile/app.json`。
 - Windows PowerShell 5.1 讀 UTF-8 無 BOM 的 .ps1 會亂碼 → .ps1 存成 UTF-8 BOM。
 - 自動模式下下載/執行外部二進位檔會被權限擋 → 給使用者指令自行執行。

@@ -12,43 +12,127 @@
   .env 有 CLOUDFLARE_TUNNEL_TOKEN → 具名通道，固定網址（PUBLIC_BASE_URL）
   沒有                           → 快速通道，每次啟動網址都不同
 
+新環境（新電腦、重新下載程式）請先在專案根目錄執行一次 ./install.sh（= python3 backend/run.py --install）。
+
 不需要先 source .venv/bin/activate：用任何 Python 執行，都會自動改用 run.py 旁邊的 .venv
 （程式放在哪個資料夾都可以，例如 python3 /任意路徑/backend/run.py）。
+
+啟動前自動檢查環境，缺少的會直接補上（新下載的程式第一次執行會比較久）：
+  backend/.venv 不存在          → 建立
+  requirements.txt 有變動        → pip install（以雜湊值記錄在 .venv/.requirements.sha256）
+  backend/.env 不存在            → 由 .env.example 複製（.env.example 就是實際使用的設定）
+  backend/webapp 不存在（電腦版）→ 在 mobile 執行 npm ci / npm run build:web（失敗不影響後端）
 """
 
+import glob
+import hashlib
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+VENV = HERE / ".venv"
+VENV_PYTHON = VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+MOBILE = HERE.parent / "mobile"
+
+
+def ensure_venv() -> None:
+    """建立 .venv、requirements.txt 變動時安裝套件；失敗就停止（不要把套件裝進別的專案的 venv）"""
+    if not VENV_PYTHON.exists():
+        print(f"  🔧 建立 Python 虛擬環境：{VENV}")
+        if subprocess.call([sys.executable, "-m", "venv", str(VENV)]) != 0 or not VENV_PYTHON.exists():
+            shutil.rmtree(VENV, ignore_errors=True)  # 建一半的 venv 會讓下次以為已經建好
+            print("  ❌ 無法建立虛擬環境。Ubuntu 請先執行：sudo apt install python3-venv，再重新執行 python run.py")
+            raise SystemExit(1)
+    requirements = HERE / "requirements.txt"
+    stamp = VENV / ".requirements.sha256"
+    digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
+    if stamp.exists() and stamp.read_text().strip() == digest:
+        return
+    print("  🔧 安裝 / 更新 Python 套件（requirements.txt）…")
+    pip = [str(VENV_PYTHON), "-m", "pip", "install", "-q", "--disable-pip-version-check", "-r", str(requirements)]
+    if subprocess.call(pip) != 0:
+        print(f"  ❌ 套件安裝失敗（見上方訊息）。修正後重新執行 python run.py，或手動執行：{' '.join(pip)}")
+        raise SystemExit(1)
+    stamp.write_text(digest + "\n")
+    print("  ✅ Python 套件已安裝")
+
+
+def ensure_env_file() -> None:
+    env, example = HERE / ".env", HERE / ".env.example"
+    if env.exists() or not example.exists():
+        return
+    shutil.copyfile(example, env)
+    print(f"  🔧 已建立 {env}（由 .env.example 複製）")
+
+
+def find_npm() -> str | None:
+    """WSL 的 PATH 可能先找到 Windows 版 npm（/mnt/c/...），在 Linux 檔案上執行會出錯 → 改找 nvm 安裝的"""
+    npm = shutil.which("npm")
+    if npm and not npm.startswith("/mnt/"):
+        return npm
+    candidates = sorted(glob.glob(str(Path.home() / ".nvm/versions/node/*/bin/npm")), key=_node_version)
+    return candidates[-1] if candidates else None
+
+
+def _node_version(npm: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", Path(npm).parent.parent.name))
+
+
+def ensure_webapp() -> None:
+    """電腦版 / 手機網頁版（/app）還沒建置時自動建置；失敗只提示，後端照常啟動"""
+    if (HERE / "webapp" / "index.html").exists() or not (MOBILE / "package.json").exists():
+        return
+    npm = find_npm()
+    if npm is None:
+        print("  ⚠️ 找不到 Node.js（npm），略過建置電腦版。安裝 Node.js 後在 mobile 資料夾執行 npm run build:web")
+        return
+    env = {**os.environ, "PATH": f"{Path(npm).parent}{os.pathsep}{os.environ.get('PATH', '')}", "CI": "1"}
+    steps = [] if (MOBILE / "node_modules").is_dir() else [[npm, "ci"]]
+    steps.append([npm, "run", "build:web"])
+    print("  🔧 建置電腦版 / 手機網頁版（/app），第一次約需 1～3 分鐘…")
+    for step in steps:
+        if subprocess.call(step, cwd=MOBILE, env=env) != 0:
+            print(f"  ⚠️ 執行 {' '.join(step[1:])} 失敗，略過電腦版（後端照常啟動）。可稍後在 mobile 資料夾手動執行 npm run build:web")
+            return
+    print("  ✅ 電腦版建置完成")
+
+
+def prepare_environment() -> None:
+    if os.environ.get("RUN_PY_REEXEC"):  # 外層已檢查過
+        return
+    sys.stdout.reconfigure(line_buffering=True)  # 輸出導向檔案時，訊息與 pip / npm 的輸出順序才不會錯亂
+    ensure_venv()
+    ensure_env_file()
+    ensure_webapp()
 
 
 def use_project_venv() -> None:
     """目前不是用 backend/.venv 的 Python 執行時，改用它重新執行本程式（參數照傳）"""
-    venv = HERE / ".venv"
-    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    if Path(sys.prefix).resolve() == venv.resolve() or os.environ.get("RUN_PY_REEXEC"):
+    if Path(sys.prefix).resolve() == VENV.resolve() or os.environ.get("RUN_PY_REEXEC"):
         return
-    if not python.exists():
-        print(f"  ⚠️ 找不到 {venv}，改用目前的 Python 執行（若出現缺少套件，請依 README 第 1 節建立 venv）")
-        return
-    args = [str(python), str(HERE / "run.py"), *sys.argv[1:]]
+    args = [str(VENV_PYTHON), str(HERE / "run.py"), *sys.argv[1:]]
     env = {**os.environ, "RUN_PY_REEXEC": "1"}  # 避免設定異常時無限重新執行
+    sys.stdout.flush()  # exec 會丟掉還沒輸出的訊息
     if os.name == "nt":  # Windows 沒有真正的 exec
         sys.exit(subprocess.call(args, env=env))
     os.execve(args[0], args, env)
 
 
 if __name__ == "__main__":
+    prepare_environment()
+    if "--install" in sys.argv:  # install.sh：只準備環境，不啟動
+        print("  ✅ 環境已就緒，執行 python3 backend/run.py 啟動")
+        sys.exit(0)
     use_project_venv()
 
 import argparse  # noqa: E402
 import asyncio  # noqa: E402
 import contextlib  # noqa: E402
 import json  # noqa: E402
-import re  # noqa: E402
-import shutil  # noqa: E402
 import socket  # noqa: E402
 
 import uvicorn  # noqa: E402
