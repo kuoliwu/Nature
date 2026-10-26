@@ -41,9 +41,15 @@ export function suggestHostForWeb(pageHostname: string | null | undefined): stri
   return pageHostname ? `${pageHostname}:${DEFAULT_PORT}` : null;
 }
 
-/** 由後端提供的電腦版（網址為 http://主機:8000/app/...）：後端就是網頁本身的主機 */
-export function hostWhenServedByBackend(loc: { host: string; pathname: string } | null | undefined): string | null {
-  return loc && (loc.pathname === '/app' || loc.pathname.startsWith('/app/')) ? loc.host : null;
+/**
+ * 由後端提供的網頁版（網址為 http://主機:8000/app/... 或對外 https://xxx.ts.net:8443/app/...）：
+ * 後端就是網頁本身的主機。要保留協定，https 頁面不能改呼叫 http（瀏覽器會擋）。
+ */
+export function hostWhenServedByBackend(
+  loc: { protocol?: string; host: string; pathname: string } | null | undefined,
+): string | null {
+  if (!loc || !(loc.pathname === '/app' || loc.pathname.startsWith('/app/'))) return null;
+  return loc.protocol === 'https:' ? `https://${loc.host}` : loc.host;
 }
 
 export function suggestHostFromDevServer(hostUri: string | null | undefined): string | null {

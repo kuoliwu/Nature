@@ -49,18 +49,28 @@ def verify_password(password: str, stored: str | None) -> bool:
 # ---------------------------------------------------------------------------
 MAX_FAILURES = 5
 LOCK_SECONDS = 300
+MAX_IP_FAILURES = 20  # 同一個 IP 15 分鐘內猜錯 20 次（不分帳號）就擋，防止從外網輪流猜不同手機號碼
+IP_LOCK_SECONDS = 900
 _failures: dict[str, list[float]] = {}
 
 
-def check_login_allowed(phone: str) -> None:
-    recent = [t for t in _failures.get(phone, []) if time.monotonic() - t < LOCK_SECONDS]
-    _failures[phone] = recent
-    if len(recent) >= MAX_FAILURES:
+def _recent(key: str, window: int) -> list[float]:
+    recent = [t for t in _failures.get(key, []) if time.monotonic() - t < window]
+    _failures[key] = recent
+    return recent
+
+
+def check_login_allowed(phone: str, ip: str | None = None) -> None:
+    if ip and len(_recent(f"ip:{ip}", IP_LOCK_SECONDS)) >= MAX_IP_FAILURES:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "登入失敗次數過多，請 15 分鐘後再試")
+    if len(_recent(phone, LOCK_SECONDS)) >= MAX_FAILURES:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "密碼錯誤次數過多，請 5 分鐘後再試")
 
 
-def record_login_failure(phone: str) -> None:
+def record_login_failure(phone: str, ip: str | None = None) -> None:
     _failures.setdefault(phone, []).append(time.monotonic())
+    if ip:
+        _failures.setdefault(f"ip:{ip}", []).append(time.monotonic())
 
 
 def clear_login_failures(phone: str) -> None:

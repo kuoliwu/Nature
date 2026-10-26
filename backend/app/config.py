@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     port: int = 8000
     # 只含公開頁面的伺服器，綁 127.0.0.1，給 Cloudflare Tunnel 轉發用
     public_port: int = 8001
+    # run.py 啟動時自動用 Tailscale Funnel 把管理 APP（8000）開放到外網：https://電腦名稱.xxx.ts.net:8443/app
+    # 手機不需安裝 Tailscale。Funnel 只能用 443、8443、10000；設 0 不開放（只能區網 / Tailscale 使用）
+    admin_funnel_port: int = 8443
 
     database_url: str = f"sqlite:///{(BASE_DIR / 'data' / 'inspection.db').as_posix()}"
     storage_dir: Path = BASE_DIR / "storage"

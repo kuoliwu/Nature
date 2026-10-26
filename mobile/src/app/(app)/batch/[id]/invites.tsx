@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useLayoutEffect, useMemo, useState } from 'react';
-import { FlatList, Linking, Platform, Pressable, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, Pressable, RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, SheetOption } from '@/components/overlays';
 import { useSheetTransfer } from '@/components/SheetTransfer';
@@ -9,6 +9,7 @@ import { api, InviteStatus } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { dayLabel, shortTime } from '@/lib/dates';
 import { confirm, errorText } from '@/lib/dialogs';
+import { openLink } from '@/lib/download';
 import { useLoad } from '@/lib/useLoad';
 
 type Filter = 'all' | 'pending' | 'booked' | 'no_email';
@@ -133,8 +134,7 @@ export default function InvitesScreen() {
       options.push({
         label: row.booking ? '開啟預約頁（代為改期）' : '開啟預約頁（代為預約）',
         onPress: () => run(async () => {
-          const link = row.link ?? (await api.inviteLink(batchId, row.unit_id)).link;
-          if (link) await Linking.openURL(link);
+          await openLink(async () => row.link ?? (await api.inviteLink(batchId, row.unit_id)).link);
         }),
       });
     }

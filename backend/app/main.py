@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from app import models  # noqa: F401  確保所有 Model 已註冊
 from app.config import BASE_DIR, settings
@@ -22,6 +22,7 @@ from app.routers import (
     users,
 )
 from app.seed import migrate_checklist_services
+from app.services.network import is_external, is_local_only_path
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 STORAGE_SUBDIRS = [
@@ -48,7 +49,21 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 
-# 區網內使用；Expo Web 預覽時瀏覽器需要 CORS
+
+
+@app.middleware("http")
+async def hide_local_only_from_internet(request: Request, call_next):
+    """經通道從外網連進來時，API 文件與系統金鑰功能（初始化、建立第一位管理者）一律當作不存在"""
+    if is_local_only_path(request.url.path) and is_external(request):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    response = await call_next(request)
+    if is_external(request):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")  # 下載連結含 token，不外流到其他網站
+    return response
+
+
+# Expo Web 預覽時瀏覽器需要 CORS（登入用 Authorization 標頭、不用 cookie，允許任何來源沒有 CSRF 問題）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -72,9 +87,10 @@ def webapp(path: str = ""):
     if not WEBAPP_DIR.is_dir():
         raise HTTPException(404, "尚未建置網頁版：請在 mobile 資料夾執行 npm run build:web")
     target = (WEBAPP_DIR / path).resolve()
-    if path and target.is_file() and WEBAPP_DIR.resolve() in target.parents:
+    if path and target.is_file() and WEBAPP_DIR.resolve() in target.parents and target.name != "index.html":
         return FileResponse(target)
-    return FileResponse(WEBAPP_DIR / "index.html")
+    # index.html 不快取：重新建置後手機一重新整理就是新版（JS 檔名含雜湊，可以快取）
+    return FileResponse(WEBAPP_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 app.include_router(system.router)

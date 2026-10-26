@@ -69,8 +69,10 @@ export function ActionSheet(props: { visible: boolean; title?: string; options: 
               style={({ pressed }) => [localStyles.sheetOption, pressed && { backgroundColor: '#f3f4f6' }]}
               onPress={() => {
                 props.onClose();
-                // iOS 上一個 Modal 還在關閉動畫時無法開下一個 Modal / Alert，稍等再執行
-                setTimeout(o.onPress, Platform.OS === 'ios' ? 400 : 0);
+                // iOS 上一個 Modal 還在關閉動畫時無法開下一個 Modal / Alert，稍等再執行。
+                // 其他平台直接執行：網頁版要保留點擊手勢，才能開新分頁（下載、預覽）
+                if (Platform.OS === 'ios') setTimeout(o.onPress, 400);
+                else o.onPress();
               }}
             >
               <Text style={[localStyles.sheetText, o.destructive && { color: colors.danger }]}>{o.label}</Text>

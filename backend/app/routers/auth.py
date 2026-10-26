@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from app.services.auth import (
     user_permissions,
     verify_password,
 )
+from app.services.network import client_ip
 from app.services.security import require_admin_key
 
 router = APIRouter(prefix="/auth", tags=["登入"])
@@ -60,12 +61,13 @@ def setup(body: SetupIn, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=LoginOut, summary="手機號碼 + 密碼登入")
-def login(body: LoginIn, db: Session = Depends(get_db)):
+def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     phone = normalize_phone(body.phone)
-    check_login_allowed(phone)
+    ip = client_ip(request)
+    check_login_allowed(phone, ip)
     user = db.scalar(select(User).where(User.phone == phone))
     if user is None or not verify_password(body.password, user.password_hash):
-        record_login_failure(phone)
+        record_login_failure(phone, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "手機號碼或密碼錯誤")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "此帳號已停用，請聯絡管理者")

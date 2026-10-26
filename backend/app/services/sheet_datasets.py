@@ -27,6 +27,7 @@ from app.models import (
     UserPermission,
     UserRole,
 )
+from app.schemas import password_problem
 from app.seed import copy_template_to_project, ensure_project_checklist
 from app.services.auth import hash_password, normalize_phone
 from app.services.sheets import Col, Dataset, ImportOutcome
@@ -382,8 +383,8 @@ def _users_apply(db: Session, ctx: dict, rows: Rows, present: list[str], out: Im
             continue
         seen[phone] = row_no
         password = v.get("password")
-        if password is not None and len(password) < 8:
-            out.error(row_no, "新密碼至少 8 碼")
+        if password is not None and (problem := password_problem(password)):
+            out.error(row_no, problem)
             continue
         role = UserRole(v["role"]) if v.get("role") else None
         wanted = {code for code in PERMISSIONS if v.get(f"perm:{code}")}
@@ -435,7 +436,7 @@ def _users_apply(db: Session, ctx: dict, rows: Rows, present: list[str], out: Im
 USERS = Dataset(
     name="users", sheet="人員", columns=USER_COLS, scope="global",
     instructions=[
-        "・以「手機」比對：已存在的帳號更新姓名、身分、啟用與權限；不存在的會新增（新帳號必須填「新密碼」，至少 8 碼）。",
+        "・以「手機」比對：已存在的帳號更新姓名、身分、啟用與權限；不存在的會新增（新帳號必須填「新密碼」，至少 8 碼且含英文字母與數字）。",
         "・權限欄位填「是」或「否」；最高管理者擁有全部權限。",
         "・「新密碼」留空代表不修改；填了會重設密碼，該人員需要重新登入。匯出檔不含密碼。",
     ],

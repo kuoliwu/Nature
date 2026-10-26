@@ -58,7 +58,7 @@ deploy/windows/         install/uninstall-autostart.ps1（UTF-8 BOM！）
 ```bash
 # 後端
 cd backend && source .venv/bin/activate
-python run.py [--tunnel]          # --tunnel：Cloudflare 快速通道；使用者已改用 Tailscale Funnel（PUBLIC_BASE_URL）
+python3 run.py [--tunnel]         # 不需先 activate，會自動用 .venv；--tunnel：Cloudflare 快速通道；使用者已改用 Tailscale Funnel（PUBLIC_BASE_URL）
 timeout 300 .venv/bin/python -m pytest -q     # 目前 94 passed
 # APP
 cd mobile
@@ -97,16 +97,21 @@ npx -y expo-doctor
 - 非路由程式不要放在 `src/app/`（不要從 route 檔 export 常數，放 `src/lib`）。
 - iOS：關閉 Modal 後立刻開另一個 Modal/Alert 會失敗 → ActionSheet 選項延遲 400ms 執行。標題列半透明 → ScrollView/FlatList 加 `contentInsetAdjustmentBehavior="automatic"`。
 - Modal 裡的錯誤要顯示在 Modal 內（顯示在後面頁面會被擋住）。
+- **網頁版開新分頁（下載／預覽）**：iPhone Safari 只允許點擊當下 `window.open`，先 await 再開會被擋（電腦 Chrome 不會）→ 一律用 `lib/download.ts openLink(async () => url)`，並在 onPress 第一個 await 前呼叫；ActionSheet 在非 iOS 直接執行選項（不 setTimeout）。
 - 網頁版：需要 `react-native-web`；datetimepicker 沒網頁版 → `pickers.tsx` 用 `createElement('input', {type:'date'})`；`Alert` 改 `window.confirm/prompt`。
 - RN 0.88：`StyleSheet.absoluteFillObject` 不存在，用 `absoluteFill`。
-- 主機位址：`normalizeBaseUrl` 容忍全形、空白、多餘路徑；Expo Go 由 `Constants.expoConfig.hostUri` 預填；網頁版由後端提供時自動用 `window.location.host`。
+- 主機位址：`normalizeBaseUrl` 容忍全形、空白、多餘路徑；Expo Go 由 `Constants.expoConfig.hostUri` 預填；網頁版由後端提供時**一律覆蓋**成目前網址（含 https 協定），不沿用 localStorage 舊值（舊版存錯 http 造成外網連不上）。後端回 `/app` 的 index.html 帶 `Cache-Control: no-cache`。
 
 ## 使用者環境（Windows + WSL2 Ubuntu-24.04）
 
-- WSL **mirrored 網路**；區網 IP `192.168.68.109`、Tailscale `100.76.33.111`；對外固定網址用 Tailscale Funnel（網址在 `.env` 的 PUBLIC_BASE_URL；Funnel 轉發到 8001）。
+- WSL **mirrored 網路**；區網 IP `192.168.68.109`、Tailscale `100.76.33.111`（機器名 laptop-agv125d3）；對外固定網址用 Tailscale Funnel（網址在 `.env` 的 PUBLIC_BASE_URL；Funnel 轉發到 8001）→ `python run.py` 即可，不需 `--tunnel`。
+- **管理 APP 對外（方案 A，使用者選定）**：`run.py` 啟動時 `ensure_admin_funnel` 用 Tailscale Funnel 把 8000 開到 `https://<機器>.ts.net:8443`（`ADMIN_FUNNEL_PORT`，0 關閉；`--bg` 保存，但曾被不明原因重設 → `keep_admin_funnel` 每分鐘檢查補回），手機不必裝 Tailscale，用網頁版 `/app`。WSL 內呼叫 `/mnt/c/Program Files/Tailscale/tailscale.exe`。443 Funnel → 8001（公開頁）不要動。
+- 外網保護（`services/network.py`）：有轉發標頭（X-Forwarded-For、Tailscale-Funnel-Request…）或非私有 IP ＝ 外網 → `/docs` `/openapi.json` `/init-db` `/db/status` `/auth/setup` 回 404；登入另有每 IP 15 分鐘 20 次失敗上限（IP 取本機轉發的 X-Forwarded-For）；密碼規則 `schemas.password_problem`（≥8、含英文與數字）。
+- 從本機測 Funnel 會被 MagicDNS 導回自己（connection refused）→ 用 dns.google 查公開 IP 再 `curl --resolve` 走真正外網路徑；測試用 port 10000 暫開，測完 `funnel --https=10000 off`。
+- 改了 APP 程式後要 `npm run build:web`，否則 /app 還是舊版（曾因舊版把 https 主機改成 http 而連不上）。iPhone 主畫面網頁版會記住加入時的網址。Expo Go 開發仍需區網或手機 Tailscale（8081 不經 Funnel）。
 - **Windows 自己連 192.168.68.109 會逾時**（mirrored 限制）→ 電腦上一律用 `localhost`。
 - 防火牆 8000、8081 已開（Windows + Hyper-V 兩道）。
-- `~/.bashrc`：venv activate 必須在 nvm 之後，否則再 activate 時 PATH 被還原 → 跑到 Windows 版 npm（`/mnt/c/Program Files/nodejs`）。症狀：UNC 路徑錯誤、ENOTEMPTY。急救：`source ~/.nvm/nvm.sh`。
+- `run.py` 自己會改用旁邊的 `.venv`（`use_project_venv` re-exec），使用者不想在 `.bashrc` 寫死路徑。`~/.bashrc` 結尾 activate 的是另一個專案的 `~/stock/.venv`。venv activate 必須在 nvm 之後，否則再 activate 時 PATH 被還原 → 跑到 Windows 版 npm（`/mnt/c/Program Files/nodejs`）。症狀：UNC 路徑錯誤、ENOTEMPTY。急救：`source ~/.nvm/nvm.sh`。
 - cloudflared 在 `~/.local/bin`；Expo 帳號 `service.hopo`，EAS projectId 在 `mobile/app.json`。
 - Windows PowerShell 5.1 讀 UTF-8 無 BOM 的 .ps1 會亂碼 → .ps1 存成 UTF-8 BOM。
 - 自動模式下下載/執行外部二進位檔會被權限擋 → 給使用者指令自行執行。

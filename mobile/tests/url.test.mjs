@@ -42,4 +42,8 @@ test('網頁版建議用網頁本身的主機', () => {
 test('由後端提供的電腦版自動使用網頁本身的主機', () => {
   assert.equal(hostWhenServedByBackend({ host: 'localhost:8000', pathname: '/app/inspections' }), 'localhost:8000');
   assert.equal(hostWhenServedByBackend({ host: 'localhost:8081', pathname: '/inspections' }), null);
+  // 對外 https（Tailscale Funnel）要保留協定與 port
+  const served = hostWhenServedByBackend({ protocol: 'https:', host: 'laptop.example.ts.net:8443', pathname: '/app/' });
+  assert.equal(served, 'https://laptop.example.ts.net:8443');
+  assert.equal(normalizeBaseUrl(served), 'https://laptop.example.ts.net:8443');
 });

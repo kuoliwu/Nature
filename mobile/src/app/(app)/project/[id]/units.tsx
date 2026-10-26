@@ -1,12 +1,13 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useLayoutEffect, useMemo, useState } from 'react';
-import { FlatList, Linking, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionSheet, PromptModal, SheetOption } from '@/components/overlays';
 import { HeaderButton, ListRow, Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, Unit, UnitImportResult } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { confirm, errorText } from '@/lib/dialogs';
+import { openLink } from '@/lib/download';
 import { pickSpreadsheet, uploadFile } from '@/lib/files';
 import { parseUnitList } from '@/lib/units';
 import { useLoad } from '@/lib/useLoad';
@@ -60,9 +61,13 @@ export default function UnitsScreen() {
   async function exportFile(format: 'xlsx' | 'csv') {
     setNotice(null);
     try {
-      const link = await api.unitsExportLink(projectId, format);
-      await Linking.openURL(link.url);
-      setNotice({ ok: true, text: `已在瀏覽器開啟「${link.filename}」，可從瀏覽器儲存或分享（連結 5 分鐘內有效）` });
+      let filename = '';
+      await openLink(async () => {
+        const link = await api.unitsExportLink(projectId, format);
+        filename = link.filename;
+        return link.url;
+      });
+      setNotice({ ok: true, text: `已在瀏覽器開啟「${filename}」，可從瀏覽器儲存或分享（連結 5 分鐘內有效）` });
     } catch (e) {
       setNotice({ ok: false, text: errorText(e) });
     }

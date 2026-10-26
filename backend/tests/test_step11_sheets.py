@@ -177,7 +177,7 @@ def test_users_import(client):
     assert r["errors"][0]["message"] == "新帳號 0912777888 需要填「新密碼」"
 
     set_cell(wb, last_row(wb), "新密碼", "short")
-    assert upload(client, "users", wb).json()["errors"][0]["message"] == "新密碼至少 8 碼"
+    assert upload(client, "users", wb).json()["errors"][0]["message"] == "密碼至少 8 碼，且需同時包含英文字母與數字"
     set_cell(wb, last_row(wb), "新密碼", "password-123")
     r = upload(client, "users", wb).json()
     assert r["created"] == ["匯入人員（0912777888）"], r

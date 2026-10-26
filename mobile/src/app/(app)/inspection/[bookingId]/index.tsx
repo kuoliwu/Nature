@@ -8,6 +8,7 @@ import { api, Inspection, InspectionPhoto, InspectionPoint, ResultValue } from '
 import { useAuth } from '@/lib/auth';
 import { dayLabel, shortTime } from '@/lib/dates';
 import { confirm, errorText } from '@/lib/dialogs';
+import { openLink } from '@/lib/download';
 import { pickImage, pickPdf, uploadFile } from '@/lib/files';
 import { SERVICE_LABEL, STATUS_LABEL } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
@@ -80,8 +81,7 @@ export default function InspectionScreen() {
 
   async function previewReport() {
     await run('產生報告中…', async () => {
-      const link = await api.reportLink(bookingId);
-      await Linking.openURL(link.url);
+      await openLink(async () => (await api.reportLink(bookingId)).url);
     });
   }
 

@@ -1,11 +1,12 @@
 /** 建案儀表板：點進建案時最先顯示的綜合狀態，並可匯出主管會議用的報表 */
 import { useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ChartCard, chartColors, DataTable, HBars, pct, Segment, StackedColumns, StackedRows, StatTile } from './charts';
 import { Message, colors } from './ui';
 import { api, Dashboard, StageKey } from '@/lib/api';
 import { errorText } from '@/lib/dialogs';
+import { openLink } from '@/lib/download';
 
 const STAGES: StageKey[] = ['completed', 'booked', 'invited', 'not_invited'];
 const SERVICES = [
@@ -21,9 +22,13 @@ export function ProjectDashboard({ data, projectId }: { data: Dashboard; project
   async function exportReport(format: 'html' | 'xlsx') {
     setNotice(null);
     try {
-      const link = await api.reportExportLink(projectId, format);
-      await Linking.openURL(link.url);
-      setNotice({ ok: true, text: `已在瀏覽器開啟「${link.filename}」，可儲存或分享（連結 5 分鐘內有效）` });
+      let filename = '';
+      await openLink(async () => {
+        const link = await api.reportExportLink(projectId, format);
+        filename = link.filename;
+        return link.url;
+      });
+      setNotice({ ok: true, text: `已在瀏覽器開啟「${filename}」，可儲存或分享（連結 5 分鐘內有效）` });
     } catch (e) {
       setNotice({ ok: false, text: errorText(e) });
     }

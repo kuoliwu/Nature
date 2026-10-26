@@ -296,7 +296,7 @@ export function errorFromResponse(status: number, data: unknown): ApiError {
     typeof detail === 'string'
       ? detail
       : Array.isArray(detail)
-        ? detail.map((d: { msg?: string }) => d.msg).join('\n')
+        ? detail.map((d: { msg?: string }) => d.msg?.replace(/^Value error, /, '')).join('\n')
         : `伺服器回應錯誤 (${status})`;
   if (status === 401 && state.token) state.onUnauthorized?.();
   return new ApiError(msg, status);
@@ -346,7 +346,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       typeof detail === 'string'
         ? detail
         : Array.isArray(detail)
-          ? detail.map((d: { msg?: string }) => d.msg).join('\n')
+          ? detail.map((d: { msg?: string }) => d.msg?.replace(/^Value error, /, '')).join('\n')
           : `伺服器回應錯誤 (${res.status})`;
     throw new ApiError(res.status === 403 && init.adminKey ? '管理金鑰錯誤 (403)' : msg, res.status);
   }

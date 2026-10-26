@@ -33,9 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       const [settings, session] = await Promise.all([loadSettings(), loadSession()]);
-      // 電腦版由後端提供時，主機就是網頁本身，不用另外設定
+      // 網頁版由後端提供時，主機一定就是網頁本身：一律以目前網址為準，
+      // 不沿用之前存的值（舊版曾把 https 存成 http，存了之後就永遠連不上）
       const served = Platform.OS === 'web' ? hostWhenServedByBackend(window.location) : null;
-      if (served && !settings.host) {
+      if (served && settings.host !== served) {
         settings.host = served;
         await saveSettings(settings);
       }

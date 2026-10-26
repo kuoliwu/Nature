@@ -138,9 +138,11 @@ def project_report_response(db: Session, project: Project, fmt: str) -> Response
     data = build_dashboard(db, project)
     content, mime = (build_html(data), "text/html; charset=utf-8") if fmt == "html" else (build_xlsx(data), XLSX_MIME)
     filename = project_report_filename(project, fmt)
+    # 互動網頁用 inline：手機瀏覽器直接顯示（attachment 在 iPhone 只會跳出下載詢問）；仍可從瀏覽器儲存
+    disposition = "inline" if fmt == "html" else "attachment"
     return Response(
         content, media_type=mime,
-        headers={"Content-Disposition": f"attachment; filename=report.{fmt}; filename*=UTF-8''{quote(filename)}"},
+        headers={"Content-Disposition": f"{disposition}; filename=report.{fmt}; filename*=UTF-8''{quote(filename)}"},
     )
 
 

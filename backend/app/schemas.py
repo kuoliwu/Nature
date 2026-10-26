@@ -1,6 +1,8 @@
+import re
 from datetime import date, datetime, time
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
 
 class HealthOut(BaseModel):
@@ -350,13 +352,28 @@ class AuthorizationOut(BaseModel):
 
 # --- 登入與人員 -----------------------------------------------------------
 PhoneStr = Field(..., min_length=8, max_length=20, description="手機號碼，登入帳號")
-PasswordStr = Field(..., min_length=8, max_length=72, description="至少 8 碼")
+
+
+def password_problem(password: str) -> str | None:
+    """密碼規則（系統可從外網連線，不能太簡單）；符合回傳 None"""
+    if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        return "密碼至少 8 碼，且需同時包含英文字母與數字"
+    return None
+
+
+def _check_password(password: str) -> str:
+    if problem := password_problem(password):
+        raise ValueError(problem)
+    return password
+
+
+Password = Annotated[str, Field(min_length=8, max_length=72, description="至少 8 碼，含英文字母與數字"), AfterValidator(_check_password)]
 
 
 class SetupIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
     phone: str = PhoneStr
-    password: str = PasswordStr
+    password: Password
 
 
 class LoginIn(BaseModel):
@@ -385,7 +402,7 @@ class LoginOut(BaseModel):
 class UserCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
     phone: str = PhoneStr
-    password: str = PasswordStr
+    password: Password
     role: str = Field("staff", pattern="^(staff|super_admin)$")
     permissions: list[str] = []
 
@@ -396,12 +413,12 @@ class UserUpdateIn(BaseModel):
     role: str | None = Field(None, pattern="^(staff|super_admin)$")
     is_active: bool | None = None
     permissions: list[str] | None = None
-    password: str | None = Field(None, min_length=8, max_length=72, description="填寫時重設密碼")
+    password: Password | None = Field(None, description="填寫時重設密碼")
 
 
 class ChangePasswordIn(BaseModel):
     old_password: str
-    new_password: str = PasswordStr
+    new_password: Password
 
 
 class PermissionOut(BaseModel):

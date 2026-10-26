@@ -17,27 +17,49 @@
 
 ## ⚡ 快速指令（日常使用）
 
-> 首次安裝請先完成第 1～3 節；5G 連線需先完成第 6 節的 Tailscale 設定。
+> 首次安裝請先完成第 1～3 節；電腦需安裝並登入 Tailscale（第 6 節），手機不需要。
 
 **終端機 ①：啟動後端**（Wi-Fi 與 5G 都一樣）
 
+不需要先 `source .venv/bin/activate`：`run.py` 會自動改用它旁邊的 `backend/.venv`，程式放在哪個資料夾都可以。
+
 ```bash
-cd ~/stock/nature/nature/backend && source .venv/bin/activate && python run.py            # 只給自己用
-cd ~/stock/nature/nature/backend && source .venv/bin/activate && python run.py --tunnel   # 外部的屋主 / 受託人也要能開簽名頁
+cd ~/stock/nature/nature/backend && python3 run.py
+# 或不切換資料夾：python3 ~/stock/nature/nature/backend/run.py
 ```
 
-已設定固定網址的 Tailscale Funnel（第 9 節方案 A）時，用 `python run.py` 即可，不需要 `--tunnel`。
+- 對外的屋主預約頁、簽名頁走 **Tailscale Funnel**（固定網址，Windows 上的 Tailscale 開著就有效），所以**不需要** `--tunnel`。`--tunnel` 是另外開一條 Cloudflare 臨時通道（網址每次不同），只在沒有 Funnel 時使用。
+- 其他指令（`python -m scripts.xxx`、`pytest`）仍需要 venv：先 `source .venv/bin/activate`，或直接用 `.venv/bin/python -m scripts.xxx`。
 
-**終端機 ②：啟動 APP 開發伺服器**（依手機目前的網路擇一）
+**手機連線：不用安裝任何東西，Wi-Fi / 5G 都可用（建議）**
 
-| 手機網路 | 指令 | APP「主機位址」填 |
-|---|---|---|
-| **Wi-Fi**（與電腦同一個網路） | `cd ~/stock/nature/nature/mobile && npm run wifi` | `192.168.68.109:8000` |
-| **5G / 4G**（手機需開啟 Tailscale） | `cd ~/stock/nature/nature/mobile && npm run 5g` | `100.76.33.111:8000` |
+`python3 run.py` 啟動時會自動設定 Tailscale Funnel，把管理 APP 開放到外網，並印出網址：
 
-- 實際 IP 以 `run.py` 和 `npm run wifi / 5g` 啟動時印出的為準。
-- 手機開 **Expo Go** 掃描終端機上的 QR code（iPhone 用內建相機掃）。
-- 手機換網路後，要在終端機 ② 按 `Ctrl + C`，再用對應的指令重新啟動，然後重新掃 QR code。終端機 ① 的後端不用重啟。
+```
+  手機 APP（任何網路）：https://電腦名稱.xxx.ts.net:8443/app　← 手機不需安裝 Tailscale，Wi-Fi / 5G 都可用
+```
+
+- 只有**電腦**需要安裝並登入 Tailscale（已完成）；手機、平板、其他電腦直接用瀏覽器開這個網址，跟一般網站一樣（HTTPS 加密）。
+- iPhone：Safari 開該網址 →「分享」→「加入主畫面」。**主畫面圖示會記住當初的網址**：之前用 `192.168.68.109` 或 `100.76.33.111` 加入的請刪掉，改用這個網址重新加入。
+- 第一次使用前要建置網頁版：`cd ~/stock/nature/nature/mobile && npm run build:web`（APP 程式有更新時也要重新執行）。
+- 設定會保留在 Tailscale，電腦重開機後仍有效；`run.py` 執行中每分鐘也會檢查，設定被重設時自動補回（終端機會顯示 🔁）。電腦關機或後端沒執行時，網址會打不開。
+- 打不開時：① 電腦瀏覽器開 `http://localhost:8000/health` 確認後端有在跑；② Windows PowerShell 執行 `tailscale funnel status`，應看到 `:8443` 那一行；③ APP 有更新時記得 `npm run build:web`，手機重新整理頁面。
+- 不想開放外網：`backend/.env` 加 `ADMIN_FUNNEL_PORT=0`，並在 Windows PowerShell 執行 `tailscale funnel --https=8443 off`。
+
+**開放外網後的安全設計**
+- 從外網連進來時，API 文件（`/docs`）、初始化資料庫、建立第一位管理者等「管理金鑰」功能一律看不到（只能在電腦本機、區網或 Tailscale 使用）。
+- 登入：同一帳號密碼錯 5 次鎖 5 分鐘；同一個 IP 15 分鐘內失敗 20 次（不分帳號）也會被擋。
+- 密碼至少 8 碼，且需同時包含英文字母與數字（舊密碼仍可登入，修改時才套用新規則）。
+- 人員離職請到「人員」分頁停用帳號，會立即登出。
+
+**使用 Expo Go 開發測試時**（一般使用者不需要）
+
+Expo Go 需要連到電腦的開發伺服器（8081），無法經過上面的網址：
+- 同一個 Wi-Fi：`npm run wifi`，APP「主機位址」填 `192.168.68.109:8000`。
+- 5G：手機要裝 Tailscale 並開啟，`npm run 5g`，主機位址填 `100.76.33.111:8000`（Tailscale 設定見第 6 節）。
+
+- 實際 IP 與網址以 `run.py` 和 `npm run wifi / 5g` 啟動時印出的為準。
+- Expo Go 掃描終端機上的 QR code（iPhone 用內建相機掃）；換網路時在終端機 ② 按 `Ctrl + C` 重新啟動並重新掃描。
 
 **其他常用指令**
 

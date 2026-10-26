@@ -11,19 +11,49 @@
 通道模式：
   .env 有 CLOUDFLARE_TUNNEL_TOKEN → 具名通道，固定網址（PUBLIC_BASE_URL）
   沒有                           → 快速通道，每次啟動網址都不同
+
+不需要先 source .venv/bin/activate：用任何 Python 執行，都會自動改用 run.py 旁邊的 .venv
+（程式放在哪個資料夾都可以，例如 python3 /任意路徑/backend/run.py）。
 """
 
-import argparse
-import asyncio
-import contextlib
-import re
-import shutil
-import socket
+import os
+import subprocess
+import sys
 from pathlib import Path
 
-import uvicorn
+HERE = Path(__file__).resolve().parent
 
-from app.config import settings
+
+def use_project_venv() -> None:
+    """目前不是用 backend/.venv 的 Python 執行時，改用它重新執行本程式（參數照傳）"""
+    venv = HERE / ".venv"
+    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if Path(sys.prefix).resolve() == venv.resolve() or os.environ.get("RUN_PY_REEXEC"):
+        return
+    if not python.exists():
+        print(f"  ⚠️ 找不到 {venv}，改用目前的 Python 執行（若出現缺少套件，請依 README 第 1 節建立 venv）")
+        return
+    args = [str(python), str(HERE / "run.py"), *sys.argv[1:]]
+    env = {**os.environ, "RUN_PY_REEXEC": "1"}  # 避免設定異常時無限重新執行
+    if os.name == "nt":  # Windows 沒有真正的 exec
+        sys.exit(subprocess.call(args, env=env))
+    os.execve(args[0], args, env)
+
+
+if __name__ == "__main__":
+    use_project_venv()
+
+import argparse  # noqa: E402
+import asyncio  # noqa: E402
+import contextlib  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import shutil  # noqa: E402
+import socket  # noqa: E402
+
+import uvicorn  # noqa: E402
+
+from app.config import settings  # noqa: E402
 
 QUICK_TUNNEL_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
@@ -101,15 +131,75 @@ async def run_tunnel() -> None:
             settings.public_url_file.unlink(missing_ok=True)
 
 
-async def serve_all(servers: list[uvicorn.Server], tunnel: bool) -> None:
-    tunnel_task = asyncio.create_task(run_tunnel()) if tunnel else None
+async def keep_admin_funnel(port: int, target: int) -> None:
+    """Funnel 設定偶爾會被 Tailscale 重設（例如 Windows 上的 Tailscale 重新啟動）→ 每分鐘檢查，不見了就補回"""
+    cli = tailscale_cli()
+    while cli:
+        await asyncio.sleep(60)
+        try:
+            if await asyncio.to_thread(_funnel_url, cli, port, target):
+                continue
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            continue  # Tailscale 暫時沒回應，下一輪再試
+        url = await asyncio.to_thread(ensure_admin_funnel, port, target)
+        print(f"  🔁 Tailscale Funnel 設定不見了，已重新開啟：{url}/app" if url else "  ⚠️ Tailscale Funnel 設定不見了，重新開啟失敗（下一分鐘再試）")
+
+
+async def serve_all(servers: list[uvicorn.Server], tunnel: bool, funnel_port: int | None = None) -> None:
+    tasks = [asyncio.create_task(run_tunnel())] if tunnel else []
+    if funnel_port:
+        tasks.append(asyncio.create_task(keep_admin_funnel(funnel_port, settings.port)))
     try:
         await asyncio.gather(*(s.serve() for s in servers))
     finally:
-        if tunnel_task:
-            tunnel_task.cancel()
+        for task in tasks:
+            task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await tunnel_task
+                await task
+
+
+def tailscale_cli() -> str | None:
+    """Linux 版 tailscale，或 WSL 裡呼叫 Windows 的 tailscale.exe"""
+    for candidate in (shutil.which("tailscale"), "/mnt/c/Program Files/Tailscale/tailscale.exe", shutil.which("tailscale.exe")):
+        if candidate and Path(candidate).exists():
+            return candidate
+    return None
+
+
+def _funnel_url(cli: str, port: int, target: int) -> str | None:
+    """目前的 Funnel 設定裡，已把 https 的 port 轉到本機 target 時回傳對外網址"""
+    out = subprocess.run([cli, "funnel", "status", "--json"], capture_output=True, text=True, timeout=20).stdout
+    status = json.loads(out or "{}")
+    for host_port, web in (status.get("Web") or {}).items():
+        proxy = ((web.get("Handlers") or {}).get("/") or {}).get("Proxy", "")
+        if host_port.endswith(f":{port}") and (status.get("AllowFunnel") or {}).get(host_port) and proxy.endswith(f":{target}"):
+            host = host_port.rsplit(":", 1)[0]
+            return f"https://{host}" if port == 443 else f"https://{host}:{port}"
+    return None
+
+
+def ensure_admin_funnel(port: int, target: int) -> str | None:
+    """確保 Tailscale Funnel 把管理 APP 開放到外網（設定會保留在 Tailscale，重開機也有效）；回傳網址"""
+    cli = tailscale_cli()
+    if cli is None:
+        print("  ⚠️ 找不到 tailscale，管理 APP 只能在區網使用（外網使用請安裝 Tailscale，見 README 第 6 節）")
+        return None
+    try:
+        url = _funnel_url(cli, port, target)
+        if url:
+            return url
+        result = subprocess.run(
+            [cli, "funnel", "--bg", f"--https={port}", f"http://127.0.0.1:{target}"],
+            capture_output=True, text=True, timeout=60,
+        )
+        url = _funnel_url(cli, port, target)
+        if url is None:
+            message = (result.stderr or result.stdout).strip().splitlines()
+            print(f"  ⚠️ 無法開啟 Tailscale Funnel（port {port}）：{message[-1] if message else '未知錯誤'}")
+        return url
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as e:
+        print(f"  ⚠️ 無法開啟 Tailscale Funnel：{e}")
+        return None
 
 
 def main() -> None:
@@ -135,7 +225,14 @@ def main() -> None:
         print(f"  電腦版（瀏覽器）    ：http://localhost:{port}/app")
     print(f"  手機 APP（Wi-Fi）   ：http://{source_ip('8.8.8.8') or '127.0.0.1'}:{port}")
     ts = tailscale_ip()
-    print(f"  手機 APP（5G）      ：http://{ts}:{port}" if ts else "  手機 APP（5G）      ：未偵測到 Tailscale")
+    print(f"  手機 APP（Tailscale）：http://{ts}:{port}" if ts else "  手機 APP（Tailscale）：未偵測到 Tailscale")
+    funnel = None
+    if settings.admin_funnel_port:
+        funnel = ensure_admin_funnel(settings.admin_funnel_port, port)
+        if funnel:
+            print(f"  手機 APP（任何網路）：{funnel}/app　← 手機不需安裝 Tailscale，Wi-Fi / 5G 都可用")
+            if not (Path(__file__).parent / "webapp").is_dir():
+                print("     （尚未建置網頁版：請在 mobile 資料夾執行 npm run build:web）")
     if args.tunnel:
         print("  對外公開頁面        ：啟動 Cloudflare 通道中…（約 5～10 秒）")
     elif settings.public_base_url:
@@ -149,7 +246,7 @@ def main() -> None:
         uvicorn.Server(uvicorn.Config("app.public_main:app", host="127.0.0.1", port=settings.public_port)),
     ]
     try:
-        asyncio.run(serve_all(servers, args.tunnel))
+        asyncio.run(serve_all(servers, args.tunnel, settings.admin_funnel_port if funnel else None))
     except KeyboardInterrupt:
         pass
 

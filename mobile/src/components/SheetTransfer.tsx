@@ -4,12 +4,13 @@
  *       把 sheet.options 放進畫面的 ActionSheet，把 sheet.status 放在畫面上方顯示進度與錯誤。
  */
 import { ReactNode, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { SheetOption } from './overlays';
 import { Message } from './ui';
 import { api, SheetName, SheetParams, sheetQuery, UnitImportResult } from '@/lib/api';
 import { confirm, errorText } from '@/lib/dialogs';
+import { openLink } from '@/lib/download';
 import { pickSpreadsheet, uploadFile } from '@/lib/files';
 
 type Options = {
@@ -30,9 +31,13 @@ export function useSheetTransfer(name: SheetName, params: SheetParams, opts: Opt
     setNotice(null);
     setErrors(null);
     try {
-      const link = await api.sheetExportLink(name, params, format);
-      await Linking.openURL(link.url);
-      setNotice({ ok: true, text: `已在瀏覽器開啟「${link.filename}」，可儲存或分享（連結 5 分鐘內有效）` });
+      let filename = '';
+      await openLink(async () => {
+        const link = await api.sheetExportLink(name, params, format);
+        filename = link.filename;
+        return link.url;
+      });
+      setNotice({ ok: true, text: `已在瀏覽器開啟「${filename}」，可儲存或分享（連結 5 分鐘內有效）` });
     } catch (e) {
       setNotice({ ok: false, text: errorText(e) });
     }
