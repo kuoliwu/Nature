@@ -2,6 +2,7 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useLayoutEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { Meter, pct } from '@/components/charts';
 import { ActionSheet, PromptModal } from '@/components/overlays';
 import { useSheetTransfer } from '@/components/SheetTransfer';
 import { Card, HeaderButton, ListRow, Loading, Message, MAX_WIDTH, colors } from '@/components/ui';
@@ -32,6 +33,11 @@ export default function BatchScreen() {
   }, [navigation, batch?.name, editable]);
 
   if (!batch) return error ? <Message kind="error" text={error} /> : <Loading />;
+
+  // 完成率 = 開放時段的已預約組數 ÷ 開放名額
+  const openSlots = batch.days.flatMap((d) => d.slots.filter((s) => s.is_open));
+  const openCapacity = openSlots.reduce((n, s) => n + s.capacity, 0);
+  const openBooked = openSlots.reduce((n, s) => n + Math.min(s.booked, s.capacity), 0);
 
   const selectedSlot = selected
     ? batch.days.find((d) => d.date === selected.date)?.slots.find((s) => s.id === selected.slotId)
@@ -67,10 +73,16 @@ export default function BatchScreen() {
     });
 
   async function removeBatch() {
-    if (!(await confirm('刪除健檢日期', `確定要刪除「${batch?.name}」與所有時段？`, '刪除', true))) return;
+    if (!batch || !(await confirm(`刪除${SERVICE_LABEL[batch.service_type]}日期`, `確定要刪除「${batch.name}」與所有時段？`, '刪除', true))) return;
     await run(async () => {
       await api.deleteBatch(id);
-      router.back();
+      // 從網址直接開啟（例如 PWA 重新整理）時沒有上一頁，改回到日期列表
+      if (router.canGoBack()) router.back();
+      else
+        router.replace({
+          pathname: '/project/[id]/batches',
+          params: { id: String(batch.project_id), service: batch.service_type },
+        });
     });
   }
 
@@ -83,7 +95,17 @@ export default function BatchScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       >
         <Card>
-          <Text style={localStyles.summary}>
+          <View style={localStyles.heroRow}>
+            <View style={localStyles.flex}>
+              <Text style={localStyles.heroLabel}>完成率（已預約 ÷ 開放名額）</Text>
+              <Text style={localStyles.heroValue}>{pct(openBooked, openCapacity)}</Text>
+            </View>
+            <Text style={localStyles.heroSide}>
+              {openBooked} / {openCapacity} 組
+            </Text>
+          </View>
+          <Meter value={openBooked} total={openCapacity} label={`已預約 ${openBooked} 組，開放名額 ${openCapacity} 組`} />
+          <Text style={[localStyles.summary, { marginTop: 8 }]}>
             {SERVICE_LABEL[batch.service_type]}｜{batch.day_count} 天｜{batch.open_slot_count}/{batch.slot_count} 個時段開放｜已預約 {batch.booked_count} 組
           </Text>
           {!batch.is_active && <Text style={[localStyles.summary, { color: colors.danger }]}>此設定已停用，客戶看不到</Text>}
@@ -101,13 +123,16 @@ export default function BatchScreen() {
         )}
 
         {batch.days.map((day) => {
-          const openCount = day.slots.filter((s) => s.is_open).length;
+          const open = day.slots.filter((s) => s.is_open);
+          const openCount = open.length;
+          const dayCapacity = open.reduce((n, s) => n + s.capacity, 0);
+          const dayBooked = open.reduce((n, s) => n + Math.min(s.booked, s.capacity), 0);
           return (
             <Card key={day.date}>
               <View style={localStyles.dayHeader}>
                 <Text style={localStyles.dayTitle}>{dayLabel(day.date)}</Text>
                 <Text style={localStyles.dayMeta}>
-                  開放 {openCount}/{day.slots.length}
+                  開放 {openCount}/{day.slots.length}｜已預約 {dayBooked}/{dayCapacity}
                 </Text>
                 {editable && (
                   <Pressable onPress={() => toggleDay(day.date, openCount === 0)} hitSlop={8}>
@@ -115,6 +140,11 @@ export default function BatchScreen() {
                   </Pressable>
                 )}
               </View>
+              {dayCapacity > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  <Meter value={dayBooked} total={dayCapacity} height={6} label={`${dayLabel(day.date)} 已預約 ${dayBooked}/${dayCapacity}`} />
+                </View>
+              )}
               <View style={localStyles.grid}>
                 {day.slots.map((slot) => {
                   const isSelected = selected?.slotId === slot.id;
@@ -250,6 +280,10 @@ const localStyles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 10, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' },
   summary: { fontSize: 15, color: colors.text },
+  heroRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 8 },
+  heroLabel: { fontSize: 13, color: colors.muted },
+  heroValue: { fontSize: 34, fontWeight: '700', color: colors.text, lineHeight: 40 },
+  heroSide: { fontSize: 14, color: colors.textSecondary, marginBottom: 6 },
   hint: { fontSize: 13, color: colors.muted, marginTop: 4 },
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   dayTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
@@ -261,22 +295,22 @@ const localStyles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#93c5fd',
-    backgroundColor: '#eff6ff',
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentBg,
     alignItems: 'center',
   },
-  slotClosed: { backgroundColor: '#f3f4f6', borderColor: colors.border },
-  slotFull: { backgroundColor: '#fef3c7', borderColor: '#fcd34d' },
+  slotClosed: { backgroundColor: colors.subtle, borderColor: colors.border },
+  slotFull: { backgroundColor: colors.warn.bg, borderColor: colors.warn.border },
   slotSelected: { borderWidth: 2, borderColor: colors.primary },
   slotTime: { fontSize: 15, fontWeight: '600', color: colors.text },
   slotCount: { fontSize: 12, color: colors.muted, marginTop: 2 },
-  closedText: { color: '#9ca3af' },
+  closedText: { color: colors.faint },
   panel: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingBottom: 24,

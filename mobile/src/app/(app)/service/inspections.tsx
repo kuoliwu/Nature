@@ -2,23 +2,27 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
+import { addDays, mondayOf, TwoWeekCalendar } from '@/components/TwoWeekCalendar';
 import { Message, MAX_WIDTH, colors } from '@/components/ui';
 import { api, ScheduleItem } from '@/lib/api';
-import { dayLabel, parseDate, shortTime, toDateString } from '@/lib/dates';
+import { dayLabel, shortTime, toDateString } from '@/lib/dates';
 import { SERVICE_LABEL, STATUS_LABEL } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
 
-function shiftDay(day: string, delta: number): string {
-  const d = parseDate(day);
-  d.setDate(d.getDate() + delta);
-  return toDateString(d);
-}
-
 export default function InspectionScheduleScreen() {
   const today = toDateString(new Date());
   const [day, setDay] = useState(today);
+  const [start, setStart] = useState(() => mondayOf(today)); // 兩週日曆的第一天（星期一）
   const { data: items, error, refresh, refreshing } = useLoad(() => api.schedule(day), [day]);
+  const { data: countRows, refresh: refreshCounts } = useLoad(() => api.scheduleCounts(start, 14).catch(() => []), [start]);
+  const counts = Object.fromEntries((countRows ?? []).map((r) => [r.date, r.count]));
+
+  function shift(weeks: number) {
+    const next = addDays(start, weeks * 7);
+    setStart(next);
+    setDay(next); // 換到另外兩週時，先看那兩週的第一天
+  }
   const { data: overdue } = useLoad(() => api.overdue().catch(() => []), []);
 
   return (
@@ -28,17 +32,26 @@ export default function InspectionScheduleScreen() {
       contentContainerStyle={localStyles.content}
       data={items ?? []}
       keyExtractor={(i) => String(i.booking_id)}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void Promise.all([refresh(), refreshCounts()])} />}
       ListHeaderComponent={
         <View style={{ gap: 10 }}>
-          <View style={localStyles.dayBar}>
-            <DayButton label="‹ 前一天" onPress={() => setDay(shiftDay(day, -1))} />
-            <Pressable onPress={() => setDay(today)} style={localStyles.dayCenter}>
-              <Text style={localStyles.dayText}>{dayLabel(day)}</Text>
-              <Text style={localStyles.daySub}>{day === today ? '今天' : '點此回到今天'}</Text>
-            </Pressable>
-            <DayButton label="後一天 ›" onPress={() => setDay(shiftDay(day, 1))} />
-          </View>
+          <TwoWeekCalendar
+            start={start}
+            selected={day}
+            today={today}
+            counts={counts}
+            onSelect={setDay}
+            onShift={shift}
+            onToday={() => {
+              setStart(mondayOf(today));
+              setDay(today);
+            }}
+          />
+          <Text style={localStyles.dayTitle}>
+            {dayLabel(day)}
+            {day === today ? '（今天）' : ''}
+            {items ? `　${items.length} 個行程` : ''}
+          </Text>
           {!!overdue?.length && (
             <Pressable onPress={() => router.push('/overdue')} style={localStyles.overdue}>
               <Text style={localStyles.overdueText}>⚠️ {overdue.length} 戶報告逾期未完成（預約日後超過 7 天）</Text>
@@ -85,25 +98,12 @@ function ScheduleRow({ item }: { item: ScheduleItem }) {
   );
 }
 
-function DayButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} hitSlop={8} style={localStyles.dayButton}>
-      <Text style={localStyles.dayButtonText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const localStyles = StyleSheet.create({
   content: { padding: 16, gap: 10, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' },
-  dayBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 12, padding: 8 },
-  dayCenter: { flex: 1, alignItems: 'center' },
-  dayText: { fontSize: 18, fontWeight: '700', color: colors.text },
-  daySub: { fontSize: 12, color: colors.muted },
-  dayButton: { paddingHorizontal: 10, paddingVertical: 8 },
-  dayButtonText: { color: colors.primary, fontSize: 15 },
+  dayTitle: { fontSize: 15, fontWeight: '700', color: colors.textSecondary, marginLeft: 4, marginTop: 4 },
   empty: { textAlign: 'center', color: colors.muted, marginTop: 40 },
-  overdue: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fef2f2', borderColor: '#fca5a5', borderWidth: 1, borderRadius: 12, padding: 12 },
-  overdueText: { color: '#991b1b', fontSize: 15, fontWeight: '600' },
+  overdue: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: colors.error.bg, borderColor: colors.error.border, borderWidth: 1, borderRadius: 12, padding: 12 },
+  overdueText: { color: colors.error.fg, fontSize: 15, fontWeight: '600' },
   row: { backgroundColor: colors.card, borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   time: { alignItems: 'center', width: 54 },
   timeText: { fontSize: 18, fontWeight: '700', color: colors.text },

@@ -7,7 +7,7 @@ import { ReactNode, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { SheetOption } from './overlays';
-import { Message } from './ui';
+import { Message, colors } from './ui';
 import { api, SheetName, SheetParams, sheetQuery, UnitImportResult } from '@/lib/api';
 import { confirm, errorText } from '@/lib/dialogs';
 import { openLink } from '@/lib/download';
@@ -114,5 +114,5 @@ export function useSheetTransfer(name: SheetName, params: SheetParams, opts: Opt
 }
 
 const localStyles = StyleSheet.create({
-  errorLine: { color: '#991b1b', fontSize: 13, marginTop: 4 },
+  errorLine: { color: colors.error.fg, fontSize: 13, marginTop: 4 },
 });

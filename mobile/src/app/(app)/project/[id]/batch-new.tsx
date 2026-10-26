@@ -177,7 +177,7 @@ const localStyles = StyleSheet.create({
   chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 15, color: colors.text },
-  chipTextOn: { color: '#fff', fontWeight: '600' },
+  chipTextOn: { color: colors.onPrimary, fontWeight: '600' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   stepButton: {
     width: 44,

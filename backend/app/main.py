@@ -14,6 +14,7 @@ from app.routers import (
     booking,
     checklist,
     downloads,
+    handbook,
     inspections,
     projects,
     reports,
@@ -22,6 +23,7 @@ from app.routers import (
     users,
 )
 from app.seed import migrate_checklist_services
+from app.services.handbook import migrate_template as migrate_handbook_template
 from app.services.network import is_external, is_local_only_path
 from app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -42,6 +44,8 @@ async def lifespan(_app: FastAPI):
         with SessionLocal() as db:
             if migrate_checklist_services(db):
                 print("  資料庫升級：既有建案的檢查清單設為「驗屋」清單")
+            if migrate_handbook_template(db):
+                print("  資料庫升級：住屋手冊範本改為第 2 版（只留保固、聯絡資訊，皆選填）")
     start_scheduler()
     yield
     stop_scheduler()
@@ -104,6 +108,7 @@ app.include_router(booking.admin)
 app.include_router(booking.public)
 app.include_router(inspections.router)
 app.include_router(reports.router)
+app.include_router(handbook.router)
 app.include_router(sheets.router)
 app.include_router(authorizations.public)
 app.include_router(authorizations.admin)

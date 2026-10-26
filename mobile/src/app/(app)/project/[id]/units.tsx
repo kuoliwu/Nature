@@ -153,7 +153,7 @@ export default function UnitsScreen() {
                 value={query}
                 onChangeText={setQuery}
                 placeholder={`搜尋戶別、屋主、電話（共 ${units.length} 戶）`}
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.faint}
                 autoCorrect={false}
                 clearButtonMode="while-editing"
               />
@@ -208,9 +208,9 @@ const localStyles = StyleSheet.create({
   list: { backgroundColor: colors.bg },
   content: { padding: 16, gap: 10, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' },
   empty: { textAlign: 'center', color: colors.muted, marginTop: 40, lineHeight: 22 },
-  errorLine: { fontSize: 14, color: '#7f1d1d' },
+  errorLine: { fontSize: 14, color: colors.error.fg },
   search: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.input,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,

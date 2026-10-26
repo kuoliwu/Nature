@@ -6,11 +6,11 @@
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -39,6 +39,7 @@ from app.schemas import (
     ReportLinkOut,
     ReportSendIn,
     ResultIn,
+    ScheduleDayCount,
     ScheduleItem,
     SignIn,
 )
@@ -235,6 +236,19 @@ def schedule(day: date, db: Session = Depends(get_db), _: User = Depends(can_vie
             service_type=_service(b), checked_in_at=b.checked_in_at,
         ))
     return out
+
+
+@router.get("/inspections/schedule/counts", response_model=list[ScheduleDayCount])
+def schedule_counts(start: date, days: int = Query(14, ge=1, le=62), db: Session = Depends(get_db), _: User = Depends(can_view)):
+    """一段期間每天有幾個預約（行程頁上方的兩週日曆）；沒有預約的日子回 0"""
+    end = start + timedelta(days=days - 1)
+    counts = dict(db.execute(
+        select(TimeSlot.slot_date, func.count(Booking.id))
+        .join(Booking, Booking.slot_id == TimeSlot.id)
+        .where(TimeSlot.slot_date.between(start, end), Booking.status.in_((BookingStatus.BOOKED, BookingStatus.COMPLETED)))
+        .group_by(TimeSlot.slot_date)
+    ).all())
+    return [ScheduleDayCount(date=start + timedelta(days=i), count=counts.get(start + timedelta(days=i), 0)) for i in range(days)]
 
 
 # ---------------------------------------------------------------------------

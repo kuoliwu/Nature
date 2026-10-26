@@ -60,9 +60,23 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     reminder_hour: int = 9  # 每天幾點檢查「預約日後 7 / 14 天報告未完成」
     reminder_to: str = ""  # 提醒信收件人（內部人員），逗號分隔；空白時寄到 MAIL_FROM / SMTP_USER
+    # 屋主預約／改期／取消時另寄一份副本給內部人員，逗號分隔；空白時寄到 MAIL_FROM / SMTP_USER，填 none 不寄
+    booking_notify_to: str = ""
     backup_hour: int = 3  # 每天幾點備份
     backup_dir: Path = BASE_DIR / "backups"  # 建議設到另一顆硬碟或雲端同步資料夾
     backup_keep_days: int = 30
+
+    @property
+    def service_mailbox(self) -> str | None:
+        """售服信箱（住屋手冊匯出後寄到這裡）"""
+        return self.mail_from or self.smtp_user or None
+
+    @property
+    def booking_notify_recipients(self) -> list[str]:
+        if self.booking_notify_to.strip().lower() == "none":
+            return []
+        listed = [x.strip() for x in self.booking_notify_to.split(",") if x.strip()]
+        return listed or [x for x in (self.mail_from or self.smtp_user,) if x]
 
     @property
     def reminder_recipients(self) -> list[str]:

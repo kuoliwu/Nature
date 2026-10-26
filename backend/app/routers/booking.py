@@ -251,7 +251,7 @@ def make_booking(token: str, body: PublicBookIn, request: Request, tasks: Backgr
         unit.owner_email = body.contact_email
     db.commit()
     db.refresh(booking)
-    queue_booking_email(tasks, booking, _link(request, invite), previous=previous)
+    queue_booking_email(tasks, booking, _link(request, invite), previous=previous, notify_staff=True)
     verb = "改期" if previous else "預約"
     return PublicBookOut(message=f"{verb}完成：{slot_label(booking.slot)}，確認信已寄到 {body.contact_email}", current=_current(booking))
 
@@ -268,4 +268,4 @@ def cancel_booking(token: str, request: Request, tasks: BackgroundTasks, db: Ses
         raise HTTPException(status.HTTP_409_CONFLICT, "預約時段已開始，無法取消，請聯絡管理單位")
     booking.status = BookingStatus.CANCELLED
     db.commit()
-    queue_booking_email(tasks, booking, _link(request, invite), cancelled=True)
+    queue_booking_email(tasks, booking, _link(request, invite), cancelled=True, notify_staff=True)

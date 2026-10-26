@@ -198,7 +198,7 @@ export default function ConnectScreen() {
 
 const localStyles = StyleSheet.create({
   link: { color: colors.primary, fontSize: 14, alignSelf: 'flex-end' },
-  line: { fontSize: 14, color: '#374151' },
+  line: { fontSize: 14, color: colors.textSecondary },
   table: { marginTop: 8, borderTopWidth: 1, borderTopColor: colors.border },
   tableRow: {
     flexDirection: 'row',
@@ -207,6 +207,6 @@ const localStyles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  tableName: { fontSize: 13, color: '#374151', fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
+  tableName: { fontSize: 13, color: colors.textSecondary, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   tableCount: { fontSize: 13, color: colors.text, fontWeight: '600' },
 });

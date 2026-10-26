@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs } from 'expo-router';
+import { router, Tabs } from 'expo-router';
 
+import { HomproTabButton } from '@/components/Hompro';
 import { colors } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 
@@ -10,6 +11,7 @@ const icon =
   (name: IconName) =>
   ({ color }: { color: unknown }) => <FontAwesome size={22} name={name} color={color as IconColor} />;
 
+/** 售服部：建案、行程、（HOMPRO）、人員、我的帳號 */
 export default function AppTabs() {
   const { can } = useAuth();
 
@@ -22,6 +24,15 @@ export default function AppTabs() {
           title: '行程',
           tabBarIcon: icon('check-square-o'),
           href: can('inspection.edit') || can('booking.view') ? undefined : null,
+        }}
+      />
+      {/* 中間凸起的 HOMPRO：回到部門選單 */}
+      <Tabs.Screen
+        name="hompro"
+        options={{
+          title: '',
+          // dismissTo：堆疊裡已有部門選單就退回去，沒有（例如直接開網址）就開啟它
+          tabBarButton: () => <HomproTabButton onPress={() => router.dismissTo('/')} />,
         }}
       />
       <Tabs.Screen

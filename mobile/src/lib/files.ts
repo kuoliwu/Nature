@@ -21,6 +21,18 @@ export async function pickSpreadsheet(): Promise<PickedFile | null> {
   return { uri: a.uri, name: a.name, mimeType: a.mimeType, file: a.file };
 }
 
+/** 選一個建案備份檔（.zip）；取消時回傳 null */
+export async function pickBackupZip(): Promise<PickedFile | null> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'],
+    copyToCacheDirectory: true,
+  });
+  if (result.canceled || !result.assets?.length) return null;
+  const a = result.assets[0];
+  if (!a.name.toLowerCase().endsWith('.zip')) throw new ApiError('請選擇建案備份檔（.zip）');
+  return { uri: a.uri, name: a.name, mimeType: 'application/zip', file: a.file };
+}
+
 /** 拍照或從相簿選一張照片；取消或沒有權限時回傳 null（沒有權限會丟出說明） */
 export async function pickImage(source: 'camera' | 'library'): Promise<PickedFile | null> {
   const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.7 };
@@ -35,6 +47,15 @@ export async function pickImage(source: 'camera' | 'library'): Promise<PickedFil
   if (result.canceled || !result.assets?.length) return null;
   const a = result.assets[0];
   return { uri: a.uri, name: a.fileName ?? `photo-${Date.now()}.jpg`, mimeType: a.mimeType ?? 'image/jpeg', file: a.file };
+}
+
+/** 從相簿一次選多張照片（拍照仍是一次一張）；取消時回傳空陣列 */
+export async function pickImages(): Promise<PickedFile[]> {
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7, allowsMultipleSelection: true, selectionLimit: 20 });
+  if (result.canceled || !result.assets?.length) return [];
+  return result.assets.map((a, i) => ({
+    uri: a.uri, name: a.fileName ?? `photo-${Date.now()}-${i}.jpg`, mimeType: a.mimeType ?? 'image/jpeg', file: a.file,
+  }));
 }
 
 /**

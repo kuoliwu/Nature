@@ -2,13 +2,15 @@
 
 分區：
   1. 人員與權限        users, user_permissions
-  2. 建案與戶別        projects, units
+  2. 建案與戶別        projects, project_pins, project_orders, units
   3. 預約批次與時段    booking_batches, batch_services, time_slots, bookings
   4. 預約頁面設定      batch_faqs, batch_attachments,
                        custom_forms, custom_form_fields, form_submissions, form_submission_files
   5. 檢查項目          inspection_categories, inspection_items, inspection_check_points, inspection_results
   6. 線上授權          authorizations, access_links
   7. 報告與提醒        reports, report_reminders
+  8. 住屋手冊          handbook_sections, handbook_fields, unit_handbooks, handbook_values, handbook_attachments,
+                       handbook_entries, handbook_photos
 """
 
 import enum
@@ -99,6 +101,12 @@ class InspectionStatus(str, enum.Enum):
     SENT = "sent"  # 報告已寄出（M5）
 
 
+class HandbookStatus(str, enum.Enum):
+    DRAFT = "draft"  # 填寫中
+    APPROVED = "approved"  # Review OK（內容鎖定）
+    SENT = "sent"  # 已寄給屋主
+
+
 class AuthorizationStatus(str, enum.Enum):
     PENDING_OWNER = "pending_owner"  # 等待屋主簽名
     PENDING_TRUSTEE = "pending_trustee"  # 已寄邀請，等待受託人簽名
@@ -167,6 +175,8 @@ class Project(TimestampMixin, Base):
     visit_cover_path: Mapped[str | None] = mapped_column(String(255))
     inspection_cover_path: Mapped[str | None] = mapped_column(String(255))
     health_check_cover_path: Mapped[str | None] = mapped_column(String(255))
+    # 住屋手冊範本版本（NULL＝還沒建立範本，或 2026-10 第一版；見 services/handbook.TEMPLATE_VERSION）
+    handbook_template_version: Mapped[int | None]
 
     units: Mapped[list["Unit"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     batches: Mapped[list["BookingBatch"]] = relationship(
@@ -175,6 +185,30 @@ class Project(TimestampMixin, Base):
     checklist: Mapped[list["InspectionCategory"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="InspectionCategory.sort_order"
     )
+
+
+class ProjectPin(Base):
+    """每位人員自己釘選的建案（建案列表排在最前面）"""
+
+    __tablename__ = "project_pins"
+    __table_args__ = (UniqueConstraint("user_id", "project_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    pinned_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
+class ProjectOrder(Base):
+    """每位人員自己拖曳排出的建案順序（position 小的在前；沒有紀錄的新建案排最前面）"""
+
+    __tablename__ = "project_orders"
+    __table_args__ = (UniqueConstraint("user_id", "project_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    position: Mapped[int]
 
 
 class Unit(TimestampMixin, Base):
@@ -667,3 +701,112 @@ class ReportReminder(Base):
     sent_at: Mapped[datetime] = mapped_column(default=datetime.now)
     success: Mapped[bool] = mapped_column(default=True)
     error_message: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------------------
+# 8. 住屋手冊（售服步驟 5：生產履歷＋住屋手冊，逐戶產生 PDF）
+# ---------------------------------------------------------------------------
+class HandbookSection(Base):
+    """建案的手冊範本分類，例如「生產履歷：建材」「住屋手冊：保固」"""
+
+    __tablename__ = "handbook_sections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(default=0)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
+
+    fields: Mapped[list["HandbookField"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan", order_by="HandbookField.sort_order"
+    )
+
+
+class HandbookField(Base):
+    """手冊欄位；default_value 是建案共用的內容（例如廚具品牌），各戶可另填自己的值"""
+
+    __tablename__ = "handbook_fields"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    section_id: Mapped[int] = mapped_column(ForeignKey("handbook_sections.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(100))
+    default_value: Mapped[str | None] = mapped_column(Text)
+    required: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
+    sort_order: Mapped[int] = mapped_column(default=0)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=text("1"))
+
+    section: Mapped[HandbookSection] = relationship(back_populates="fields")
+
+
+class UnitHandbook(Base):
+    """每戶手冊的狀態：填寫中 → Review OK → 已寄送"""
+
+    __tablename__ = "unit_handbooks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), unique=True)
+    status: Mapped[HandbookStatus] = mapped_column(enum_col(HandbookStatus), default=HandbookStatus.DRAFT)
+    approved_at: Mapped[datetime | None]
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    sent_at: Mapped[datetime | None]
+    sent_to: Mapped[str | None] = mapped_column(String(255))
+    file_path: Mapped[str | None] = mapped_column(String(500))  # 最後寄出的完整 PDF
+
+    approver: Mapped["User | None"] = relationship()
+
+
+class HandbookValue(Base):
+    __tablename__ = "handbook_values"
+    __table_args__ = (UniqueConstraint("unit_id", "field_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), index=True)
+    field_id: Mapped[int] = mapped_column(ForeignKey("handbook_fields.id", ondelete="CASCADE"), index=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
+class HandbookAttachment(Base):
+    """外部 PDF：unit_id 為 NULL＝建案共用（每戶手冊都合併），否則只屬於該戶"""
+
+    __tablename__ = "handbook_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(500))
+    file_size: Mapped[int]
+    page_count: Mapped[int] = mapped_column(default=0)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    uploaded_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
+class HandbookEntry(Base):
+    """逐戶的生產履歷紀錄：日期 + 照片 + 選填文字（例如「防水試水 48 小時無滲漏」）"""
+
+    __tablename__ = "handbook_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), index=True)
+    entry_date: Mapped[date]
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+    photos: Mapped[list["HandbookPhoto"]] = relationship(
+        back_populates="entry", cascade="all, delete-orphan", order_by="HandbookPhoto.id"
+    )
+
+
+class HandbookPhoto(Base):
+    __tablename__ = "handbook_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("handbook_entries.id", ondelete="CASCADE"), index=True)
+    file_path: Mapped[str] = mapped_column(String(500))
+    width: Mapped[int]
+    height: Mapped[int]
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+    entry: Mapped[HandbookEntry] = relationship(back_populates="photos")

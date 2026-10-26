@@ -57,7 +57,7 @@ export default function ProjectEditScreen() {
     if (!(await confirm('刪除建案', `確定要刪除「${form?.name}」？\n住戶、健檢日期、檢查項目會一併刪除，無法復原。`, '刪除', true))) return;
     try {
       await api.deleteProject(Number(id));
-      router.dismissTo('/');
+      router.dismissTo('/service'); // 回到售服部的建案列表
     } catch (e) {
       setError(errorText(e));
     }

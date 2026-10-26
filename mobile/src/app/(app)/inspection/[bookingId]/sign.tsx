@@ -116,8 +116,8 @@ const localStyles = StyleSheet.create({
   meta: { fontSize: 14, color: colors.muted },
   summary: { flexDirection: 'row', marginTop: 12 },
   fail: { paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  failLabel: { fontSize: 15, color: '#991b1b', fontWeight: '600' },
-  failNote: { fontSize: 14, color: '#374151', marginTop: 2 },
+  failLabel: { fontSize: 15, color: colors.error.fg, fontWeight: '600' },
+  failNote: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
   padActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   clear: { color: colors.primary, fontSize: 15 },
 });

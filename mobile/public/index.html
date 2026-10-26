@@ -7,7 +7,7 @@
     <title>驗屋預約管理</title>
     <!-- 加入主畫面（PWA）：網頁版由後端在 /app 提供，路徑都以 /app 開頭 -->
     <link rel="manifest" href="/app/manifest.json" />
-    <meta name="theme-color" content="#1d4ed8" />
+    <meta name="theme-color" content="#14231e" />
     <link rel="icon" type="image/png" sizes="192x192" href="/app/icons/icon-192.png" />
     <!-- iPhone / iPad：主畫面圖示、全螢幕開啟、狀態列樣式、主畫面上的名稱 -->
     <link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png" />
@@ -35,7 +35,7 @@
       }
       /* 主畫面開啟（全螢幕）時避開 iPhone 瀏海與底部橫條 */
       body {
-        background-color: #f3f4f6;
+        background-color: #0c1714; /* 暗夜墨綠；亮色主題由下方程式改掉，避免載入時閃一下 */
         padding-top: env(safe-area-inset-top);
         padding-bottom: env(safe-area-inset-bottom);
         box-sizing: border-box;
@@ -44,6 +44,14 @@
   </head>
 
   <body>
+    <script>
+      try {
+        if (localStorage.getItem('ui.theme') === 'light') {
+          document.body.style.backgroundColor = '#f3f4f6';
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff');
+        }
+      } catch (e) {}
+    </script>
     <!-- Use static rendering with Expo Router to support running without JavaScript. -->
     <noscript>請開啟瀏覽器的 JavaScript 才能使用。</noscript>
     <!-- The root element for your Expo app. -->

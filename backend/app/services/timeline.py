@@ -11,6 +11,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.models import Project
+from app.services import handbook
 from app.services.dashboard import collect_phases
 
 STEPS = (
@@ -75,9 +76,11 @@ def build_timeline(db: Session, project: Project, today: date | None = None) -> 
             started=booked > 0 or begun(p), date_from=p["date_from"], date_to=p["date_to"],
             note=f"完成 {completed}/{total}・報告已寄 {p['reports_sent']}",
         ))
-        if service == "inspection":  # 第 5 步夾在驗屋與預約健檢之間（生產履歷＋住屋手冊於下一版實作）
-            steps.append(_step("handbook", labels["handbook"], done=0, total=total, finished=False, started=False,
-                               note=f"已寄送 0/{total}"))
+        if service == "inspection":  # 第 5 步夾在驗屋與預約健檢之間：住屋手冊全部寄出＝完成
+            sent = handbook.sent_count(db, project.id)
+            steps.append(_step("handbook", labels["handbook"], done=sent, total=total,
+                               finished=bool(total) and sent >= total, started=sent > 0 or handbook.started(db, project.id),
+                               note=f"已寄送 {sent}/{total}"))
 
     current = next((i for i, s in enumerate(steps) if s["status"] != "done"), len(steps) - 1)
     return {

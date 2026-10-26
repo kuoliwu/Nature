@@ -137,6 +137,37 @@ def test_capacity_reschedule_and_cancel(client, setup):
     assert client.get(f"/api/public/book/{tokens['A-3']}").json()["current"] is None
 
 
+def test_staff_copy_of_owner_actions(client, setup, monkeypatch):
+    """屋主預約／改期／取消時另寄副本給內部人員；屋主那封信看不到內部收件人；管理端取消不寄副本"""
+    monkeypatch.setattr(settings, "booking_notify_to", "staff@example.com")
+    b, s = setup["batch"], setup["slots"]
+    send(client, b)
+    token = token_of(client, b, "A-1")
+
+    for action, keyword in [
+        (lambda: owner_book(client, token, s[0]), "預約確認"),
+        (lambda: owner_book(client, token, s[1]), "改期"),
+        (lambda: client.post(f"/api/public/book/{token}/cancel"), "取消"),
+    ]:
+        before = outbox()
+        assert action().status_code in (200, 204)
+        owner_mail, staff_mail = sorted(mails_since(before), key=lambda m: m["To"] != "owner@example.com")
+        assert owner_mail["To"] == "owner@example.com" and "staff@example.com" not in str(owner_mail)
+        assert staff_mail["To"] == "staff@example.com" and staff_mail["Subject"].startswith("【副本】")
+        assert keyword in staff_mail["Subject"] and "owner@example.com" in staff_mail.get_content()
+
+    assert owner_book(client, token, s[0]).status_code == 200
+    booking_id = next(x for x in client.get(f"/batches/{b}/invites", headers=ADMIN).json() if x["unit_no"] == "A-1")["booking"]["id"]
+    before = outbox()
+    assert client.post(f"/bookings/{booking_id}/cancel", headers=ADMIN).status_code == 204
+    assert [m["To"] for m in mails_since(before)] == ["owner@example.com"]
+
+    monkeypatch.setattr(settings, "booking_notify_to", "none")
+    before = outbox()
+    assert owner_book(client, token, s[2]).status_code == 200
+    assert [m["To"] for m in mails_since(before)] == ["owner@example.com"]
+
+
 def test_closed_slot_and_booking_window(client, setup):
     b, s = setup["batch"], setup["slots"]
     send(client, b)

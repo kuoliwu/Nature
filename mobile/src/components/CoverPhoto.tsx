@@ -84,5 +84,5 @@ const s = StyleSheet.create({
   none: { fontSize: 12, color: colors.muted },
   title: { fontSize: 16, fontWeight: '600', color: colors.text },
   hint: { fontSize: 13, color: colors.muted, marginTop: 2 },
-  chevron: { fontSize: 22, color: '#9ca3af', marginLeft: 4 },
+  chevron: { fontSize: 22, color: colors.faint, marginLeft: 4 },
 });

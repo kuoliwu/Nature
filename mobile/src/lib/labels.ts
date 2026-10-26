@@ -1,5 +1,5 @@
 import { colors } from '@/components/ui';
-import type { InspectionStatus } from './api';
+import type { HandbookStatus, InspectionStatus } from './api';
 
 export const SERVICE_LABEL = { visit: '參觀', inspection: '驗屋', health_check: '健檢' } as const;
 
@@ -10,7 +10,7 @@ export const SERVICE_LABEL = { visit: '參觀', inspection: '驗屋', health_che
 export const PHASES = [
   { service: 'visit', phase: '步驟 2', title: '預約參觀', desc: '屋主線上預約參觀時段，當天現場報到', defaultName: '預約參觀',
     cover: { title: '參觀頁封面照片', hint: '選填，顯示在預約參觀頁面最上方' } },
-  { service: 'inspection', phase: '步驟 3', title: '預約驗屋', desc: '屋主線上預約驗屋時段', defaultName: '交屋驗屋',
+  { service: 'inspection', phase: '步驟 3', title: '預約驗屋', desc: '屋主線上預約驗屋時段', defaultName: '預約驗屋',
     cover: { title: '預售屋照片', hint: '顯示在預約驗屋頁面最上方' } },
   { service: 'health_check', phase: '步驟 6', title: '預約健檢', desc: '屋主線上預約健檢時段', defaultName: '保固健檢',
     cover: { title: '成屋照片', hint: '顯示在預約健檢頁面最上方' } },
@@ -25,3 +25,9 @@ export const STATUS_LABEL: Record<InspectionStatus, { text: string; color: strin
   checked_in: { text: '已報到', color: colors.green },
 };
 
+
+export const HANDBOOK_STATUS_LABEL: Record<HandbookStatus, string> = {
+  draft: '填寫中',
+  approved: '已確認',
+  sent: '已寄送',
+};

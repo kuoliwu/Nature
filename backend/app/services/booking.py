@@ -8,6 +8,7 @@ from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import Booking, BookingBatch, BookingStatus, ServiceType, TimeSlot, Unit, UnitInvite
 from app.services.mailer import send_email_safely
 from app.services.slots import ACTIVE_STATUSES
@@ -147,10 +148,14 @@ def queue_invite_email(tasks: BackgroundTasks, invite: UnitInvite, link: str) ->
 
 
 def queue_booking_email(
-    tasks: BackgroundTasks, booking: Booking, link: str, previous: TimeSlot | None = None, cancelled: bool = False
+    tasks: BackgroundTasks,
+    booking: Booking,
+    link: str,
+    previous: TimeSlot | None = None,
+    cancelled: bool = False,
+    notify_staff: bool = False,
 ) -> None:
-    if not booking.contact_email:
-        return
+    """寄給屋主；notify_staff=True（屋主自己操作）時另寄一份副本給內部人員，屋主看不到內部收件人"""
     unit, slot = booking.unit, booking.slot
     label = SERVICE_LABEL[booking.slot.batch.service_type]
     if cancelled:
@@ -175,4 +180,12 @@ def queue_booking_email(
         tail,
         "",
     ])
-    tasks.add_task(send_email_safely, [booking.contact_email], subject, body)
+    if booking.contact_email:
+        tasks.add_task(send_email_safely, [booking.contact_email], subject, body)
+    staff = [x for x in settings.booking_notify_recipients if x.lower() != (booking.contact_email or "").lower()]
+    if notify_staff and staff:
+        sent_to = f"（已寄給屋主 {booking.contact_email}）" if booking.contact_email else "（屋主未留 Email）"
+        tasks.add_task(
+            send_email_safely, staff, f"【副本】{subject}",
+            "\n".join([f"屋主已在預約網頁完成操作{sent_to}，以下是寄給屋主的內容：", "", "-" * 30, body]),
+        )

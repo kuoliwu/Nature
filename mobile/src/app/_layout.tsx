@@ -1,15 +1,33 @@
-import { Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
 
-import { Loading } from '@/components/ui';
+import { Loading, colors } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/lib/auth';
 
+// 標題列、分頁列、頁面底色跟著配色主題（lib/theme.ts）
+const base = colors.dark ? DarkTheme : DefaultTheme;
+const navTheme = {
+  ...base,
+  colors: { ...base.colors, primary: colors.primary, background: colors.bg, card: colors.card, text: colors.text, border: colors.border },
+};
+
 export default function RootLayout() {
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    // 網頁版：頁面底色與瀏覽器網址列顏色
+    document.body.style.backgroundColor = colors.bg;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', colors.card);
+  }, []);
+
   return (
-    <AuthProvider>
-      <StatusBar style="dark" />
-      <RootStack />
-    </AuthProvider>
+    <ThemeProvider value={navTheme}>
+      <AuthProvider>
+        <StatusBar style={colors.dark ? 'light' : 'dark'} />
+        <RootStack />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

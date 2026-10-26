@@ -219,10 +219,10 @@ const localStyles = StyleSheet.create({
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   itemName: { fontSize: 16, fontWeight: '600', color: colors.text },
   points: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  point: { borderWidth: 1, borderColor: '#93c5fd', backgroundColor: '#eff6ff', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
-  pointInactive: { borderColor: colors.border, backgroundColor: '#f3f4f6' },
+  point: { borderWidth: 1, borderColor: colors.accentBorder, backgroundColor: colors.accentBg, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
+  pointInactive: { borderColor: colors.border, backgroundColor: colors.subtle },
   pointText: { fontSize: 14, color: colors.text },
-  inactiveText: { color: '#9ca3af', textDecorationLine: 'line-through' },
+  inactiveText: { color: colors.faint, textDecorationLine: 'line-through' },
   badge: { fontSize: 12, color: colors.muted, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 1 },
   noPoints: { fontSize: 13, color: colors.muted },
 });

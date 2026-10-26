@@ -62,6 +62,7 @@ export type Project = Required<ProjectInput> & {
   batch_count: number;
   batch_counts: Record<ServiceType, number>;
   covers: Record<ServiceType, string | null>; // 屋主預約頁封面照片（短效網址）
+  pinned: boolean; // 自己是否釘選（釘選的排在列表最前面）
 };
 
 // 售服時間軸：1 新建案 → 2 預約參觀 → 3 預約驗屋 → 4 驗屋 → 5 履歷手冊 → 6 預約健檢 → 7 健檢
@@ -309,16 +310,23 @@ export function apiState(): { baseUrl: string; token: string | null } {
   return { baseUrl: state.baseUrl, token: state.token };
 }
 
-export function errorFromResponse(status: number, data: unknown): ApiError {
+/** 後端回應的錯誤訊息（detail）轉成給人看的文字 */
+function describeError(status: number, data: unknown): string {
   const detail = (data as { detail?: unknown } | null)?.detail;
-  const msg =
-    typeof detail === 'string'
-      ? detail
-      : Array.isArray(detail)
-        ? detail.map((d: { msg?: string }) => d.msg?.replace(/^Value error, /, '')).join('\n')
-        : `伺服器回應錯誤 (${status})`;
+  // 後端沒有這個 API（FastAPI 預設的英文訊息；我們自己的錯誤都是中文）：APP 已更新但後端還在跑舊版
+  if ((status === 404 && detail === 'Not Found') || (status === 405 && detail === 'Method Not Allowed')) {
+    return '後端版本較舊，找不到這個功能：請重新啟動後端（run.py）後再試一次';
+  }
+  return typeof detail === 'string'
+    ? detail
+    : Array.isArray(detail)
+      ? detail.map((d: { msg?: string }) => d.msg?.replace(/^Value error, /, '')).join('\n')
+      : `伺服器回應錯誤 (${status})`;
+}
+
+export function errorFromResponse(status: number, data: unknown): ApiError {
   if (status === 401 && state.token) state.onUnauthorized?.();
-  return new ApiError(msg, status);
+  return new ApiError(describeError(status, data), status);
 }
 
 type RequestInit = {
@@ -360,17 +368,39 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     if (res.status === 401 && init.auth !== false && state.token) state.onUnauthorized?.();
-    const detail = data?.detail;
-    const msg =
-      typeof detail === 'string'
-        ? detail
-        : Array.isArray(detail)
-          ? detail.map((d: { msg?: string }) => d.msg?.replace(/^Value error, /, '')).join('\n')
-          : `伺服器回應錯誤 (${res.status})`;
+    const msg = describeError(res.status, data);
     throw new ApiError(res.status === 403 && init.adminKey ? '管理金鑰錯誤 (403)' : msg, res.status);
   }
   return data as T;
 }
+
+// 住屋手冊（售服步驟 5）
+export type HandbookStatus = 'draft' | 'approved' | 'sent';
+export type HandbookField = { id: number; label: string; default_value: string | null; required: boolean; is_active: boolean; has_values: boolean };
+export type HandbookSection = { id: number; name: string; is_active: boolean; fields: HandbookField[] };
+export type HandbookAttachment = { id: number; title: string; size: number; page_count: number; shared: boolean; uploaded_at: string; url: string };
+export type HandbookTemplate = { sections: HandbookSection[]; attachments: HandbookAttachment[] };
+export type HandbookUnitRow = {
+  unit_id: number; unit_no: string; owner_name: string | null; owner_email: string | null;
+  status: HandbookStatus; missing: number; attachments: number; entries: number; sent_at: string | null;
+};
+export type HandbookPhoto = { id: number; url: string; width: number; height: number };
+/** 生產履歷紀錄：日期 + 照片 + 選填文字 */
+export type HandbookEntry = { id: number; entry_date: string; note: string | null; created_by: string | null; photos: HandbookPhoto[] };
+export type HandbookFieldValue = { field_id: number; label: string; required: boolean; default_value: string | null; value: string | null };
+export type UnitHandbook = {
+  unit_id: number; project_id: number; unit_no: string; owner_name: string | null; owner_email: string | null;
+  status: HandbookStatus; missing: string[];
+  approved_at: string | null; approved_by: string | null; sent_at: string | null; sent_to: string | null;
+  service_email: string | null; // 預設收件人：售服信箱
+  sections: { id: number; name: string; fields: HandbookFieldValue[] }[];
+  attachments: HandbookAttachment[];
+  entries: HandbookEntry[];
+};
+type Direction = 'up' | 'down';
+
+/** 從建案備份檔還原的結果：新建案＋各資料表筆數 */
+export type ProjectImportResult = { project: Project; counts: Record<string, number> };
 
 export const api = {
   // 系統
@@ -401,6 +431,12 @@ export const api = {
   createProject: (body: ProjectInput) => request<Project>('/projects', { method: 'POST', body }),
   updateProject: (id: number, body: Partial<ProjectInput>) =>
     request<Project>(`/projects/${id}`, { method: 'PATCH', body }),
+  projectBackupLink: (id: number) => request<{ url: string; filename: string }>(`/projects/${id}/backup-link`, { method: 'POST' }),
+  // 從備份檔還原：用 lib/files.ts uploadFile('/projects/import', file) → ProjectImportResult
+  /** 長按拖曳排序後，存下自己畫面上由上到下的建案順序 */
+  saveProjectOrder: (projectIds: number[]) => request<null>('/projects/order', { method: 'PUT', body: { project_ids: projectIds } }),
+  pinProject: (id: number) => request<null>(`/projects/${id}/pin`, { method: 'PUT' }),
+  unpinProject: (id: number) => request<null>(`/projects/${id}/pin`, { method: 'DELETE' }),
   deleteProject: (id: number) => request<null>(`/projects/${id}`, { method: 'DELETE' }),
 
   dashboard: (projectId: number) => request<Dashboard>(`/projects/${projectId}/dashboard`),
@@ -467,6 +503,9 @@ export const api = {
   // 第三階段：驗屋
   schedule: (day: string) => request<ScheduleItem[]>(`/inspections/schedule?day=${day}`),
   inspection: (bookingId: number) => request<Inspection>(`/inspections/${bookingId}`),
+  /** 一段期間每天的預約數（行程頁上方的兩週日曆） */
+  scheduleCounts: (start: string, days = 14) =>
+    request<{ date: string; count: number }[]>(`/inspections/schedule/counts?start=${start}&days=${days}`),
   setResult: (bookingId: number, pointId: number, body: { result?: ResultValue; note?: string | null }) =>
     request<InspectionPoint>(`/inspections/${bookingId}/results/${pointId}`, { method: 'PUT', body }),
   updateInspectionNote: (bookingId: number, general_note: string | null) =>
@@ -492,6 +531,47 @@ export const api = {
   runReminders: () =>
     request<{ sent: number; day7: string[]; day14: string[]; error?: string | null }>('/reminders/run', { method: 'POST' }),
   runBackup: () => request<{ database: string | null; files_copied: number; backup_dir: string }>('/backup/run', { method: 'POST' }),
+
+  // 住屋手冊：範本（分類、欄位、共用預設值）與建案共用 PDF
+  handbookTemplate: (projectId: number) => request<HandbookTemplate>(`/projects/${projectId}/handbook/template`),
+  addHandbookSection: (projectId: number, name: string) =>
+    request<HandbookTemplate>(`/projects/${projectId}/handbook/sections`, { method: 'POST', body: { name } }),
+  updateHandbookSection: (id: number, body: { name?: string; is_active?: boolean }) =>
+    request<HandbookTemplate>(`/handbook/sections/${id}`, { method: 'PATCH', body }),
+  moveHandbookSection: (id: number, direction: Direction) =>
+    request<HandbookTemplate>(`/handbook/sections/${id}/move`, { method: 'POST', body: { direction } }),
+  deleteHandbookSection: (id: number) => request<HandbookTemplate>(`/handbook/sections/${id}`, { method: 'DELETE' }),
+  addHandbookField: (sectionId: number, body: { label: string; default_value?: string | null; required?: boolean }) =>
+    request<HandbookTemplate>(`/handbook/sections/${sectionId}/fields`, { method: 'POST', body }),
+  updateHandbookField: (id: number, body: { label?: string; default_value?: string | null; required?: boolean; is_active?: boolean }) =>
+    request<HandbookTemplate>(`/handbook/fields/${id}`, { method: 'PATCH', body }),
+  moveHandbookField: (id: number, direction: Direction) =>
+    request<HandbookTemplate>(`/handbook/fields/${id}/move`, { method: 'POST', body: { direction } }),
+  deleteHandbookField: (id: number) => request<HandbookTemplate>(`/handbook/fields/${id}`, { method: 'DELETE' }),
+  // 外部 PDF 上傳用 lib/files.ts uploadFile（/projects/{id}/handbook/attachments、/units/{id}/handbook/attachments）
+  moveHandbookAttachment: <T extends HandbookTemplate | UnitHandbook>(id: number, direction: Direction) =>
+    request<T>(`/handbook/attachments/${id}/move`, { method: 'POST', body: { direction } }),
+  deleteHandbookAttachment: <T extends HandbookTemplate | UnitHandbook>(id: number) =>
+    request<T>(`/handbook/attachments/${id}`, { method: 'DELETE' }),
+
+  // 住屋手冊：逐戶
+  handbooks: (projectId: number) => request<HandbookUnitRow[]>(`/projects/${projectId}/handbooks`),
+  unitHandbook: (unitId: number) => request<UnitHandbook>(`/units/${unitId}/handbook`),
+  saveHandbookValues: (unitId: number, values: Record<number, string | null>) =>
+    request<UnitHandbook>(`/units/${unitId}/handbook/values`, { method: 'PUT', body: { values } }),
+  handbookPreviewLink: (unitId: number) =>
+    request<{ url: string; filename: string }>(`/units/${unitId}/handbook/preview-link`, { method: 'POST' }),
+  approveHandbook: (unitId: number) => request<UnitHandbook>(`/units/${unitId}/handbook/approve`, { method: 'POST' }),
+  unapproveHandbook: (unitId: number) => request<UnitHandbook>(`/units/${unitId}/handbook/unapprove`, { method: 'POST' }),
+  // 生產履歷紀錄（照片上傳用 lib/files.ts uploadFile → /handbook/entries/{id}/photos）
+  addHandbookEntry: (unitId: number, body: { entry_date: string; note: string | null }) =>
+    request<HandbookEntry>(`/units/${unitId}/handbook/entries`, { method: 'POST', body }),
+  updateHandbookEntry: (id: number, body: { entry_date: string; note: string | null }) =>
+    request<HandbookEntry>(`/handbook/entries/${id}`, { method: 'PATCH', body }),
+  deleteHandbookEntry: (id: number) => request<null>(`/handbook/entries/${id}`, { method: 'DELETE' }),
+  deleteHandbookPhoto: (id: number) => request<HandbookEntry>(`/handbook/photos/${id}`, { method: 'DELETE' }),
+  sendHandbook: (unitId: number, to: string | null) =>
+    request<UnitHandbook>(`/units/${unitId}/handbook/send`, { method: 'POST', body: { to } }),
 
   // 檢查項目清單（每個建案一份）
   checklist: (projectId: number, service: ChecklistService) =>

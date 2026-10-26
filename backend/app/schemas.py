@@ -1,6 +1,6 @@
 import re
 from datetime import date, datetime, time
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
@@ -64,6 +64,21 @@ class ProjectOut(ProjectIn):
     batch_count: int = 0
     batch_counts: dict[str, int] = {}  # 各階段的預約設定數：visit / inspection / health_check
     covers: dict[str, str | None] = {}  # 屋主預約頁封面照片網址（短效連結）：visit / inspection / health_check
+    pinned: bool = False  # 目前登入的人是否釘選了這個建案
+
+
+class ProjectOrderIn(BaseModel):
+    project_ids: list[int] = Field(..., max_length=2000)  # 畫面上由上到下的順序
+
+
+class ScheduleDayCount(BaseModel):
+    date: date
+    count: int
+
+
+class ProjectImportOut(BaseModel):
+    project: ProjectOut
+    counts: dict[str, int]  # 各資料表還原的筆數
 
 
 class UnitIn(BaseModel):
@@ -662,3 +677,121 @@ class BackupRunOut(BaseModel):
     database: str | None
     files_copied: int
     backup_dir: str
+
+
+# ---------------------------------------------------------------------------
+# 住屋手冊（售服步驟 5）
+# ---------------------------------------------------------------------------
+class HandbookFieldOut(BaseModel):
+    id: int
+    label: str
+    default_value: str | None
+    required: bool
+    is_active: bool
+    has_values: bool  # 已有住戶填過：不能刪除，只能停用
+
+
+class HandbookSectionOut(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+    fields: list[HandbookFieldOut]
+
+
+class HandbookSectionIn(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    is_active: bool | None = None
+
+
+class HandbookFieldIn(BaseModel):
+    label: str | None = Field(None, min_length=1, max_length=100)
+    default_value: str | None = None
+    required: bool | None = None
+    is_active: bool | None = None
+
+
+class MoveIn(BaseModel):
+    direction: Literal["up", "down"]
+
+
+class HandbookAttachmentOut(BaseModel):
+    id: int
+    title: str
+    size: int
+    page_count: int
+    shared: bool  # 建案共用（每戶都會合併）
+    uploaded_at: datetime
+    url: str
+
+
+class HandbookTemplateOut(BaseModel):
+    sections: list[HandbookSectionOut]
+    attachments: list[HandbookAttachmentOut]  # 建案共用的外部 PDF
+
+
+class HandbookUnitRow(BaseModel):
+    unit_id: int
+    unit_no: str
+    owner_name: str | None
+    owner_email: str | None
+    status: str  # draft / approved / sent
+    missing: int  # 尚未填寫的必填欄位數
+    attachments: int  # 該戶專屬 PDF 數
+    entries: int  # 生產履歷紀錄筆數
+    sent_at: datetime | None
+
+
+class HandbookFieldValue(BaseModel):
+    field_id: int
+    label: str
+    required: bool
+    default_value: str | None
+    value: str | None
+
+
+class HandbookValueSection(BaseModel):
+    id: int
+    name: str
+    fields: list[HandbookFieldValue]
+
+
+class HandbookPhotoOut(BaseModel):
+    id: int
+    url: str
+    width: int
+    height: int
+
+
+class HandbookEntryOut(BaseModel):
+    id: int
+    entry_date: date
+    note: str | None
+    created_by: str | None
+    photos: list[HandbookPhotoOut]
+
+
+class HandbookEntryIn(BaseModel):
+    entry_date: date
+    note: str | None = Field(None, max_length=2000)
+
+
+class UnitHandbookOut(BaseModel):
+    unit_id: int
+    project_id: int
+    unit_no: str
+    owner_name: str | None
+    owner_email: str | None
+    status: str
+    missing: list[str]
+    approved_at: datetime | None
+    approved_by: str | None
+    sent_at: datetime | None
+    sent_to: str | None
+    service_email: str | None  # 預設收件人：售服信箱
+    sections: list[HandbookValueSection]
+    attachments: list[HandbookAttachmentOut]  # 合併順序：共用在前、該戶在後
+    entries: list[HandbookEntryOut]  # 生產履歷紀錄（依日期）
+
+
+class HandbookValuesIn(BaseModel):
+    values: dict[int, str | None]  # field_id → 內容；空白或 null ＝ 清除（改用共用預設值）

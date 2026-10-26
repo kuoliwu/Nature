@@ -35,7 +35,11 @@ export function DateTimeField({ label, mode, value, onChange, clearable, hint, m
             value: value ?? '',
             step: minuteStep ? minuteStep * 60 : undefined,
             onChange: (e: { target: { value: string } }) => onChange(e.target.value || null),
-            style: { fontSize: 16, padding: '8px 12px', border: `1px solid ${colors.border}`, borderRadius: 8 },
+            style: {
+              fontSize: 16, padding: '8px 12px', border: `1px solid ${colors.border}`, borderRadius: 8,
+              // 跟著主題：暗色時瀏覽器的日曆圖示與彈出的日曆也用暗色
+              backgroundColor: colors.input, color: colors.text, colorScheme: colors.dark ? 'dark' : 'light',
+            },
           })
         ) : Platform.OS === 'ios' ? (
           value ? (
@@ -88,9 +92,9 @@ const localStyles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: '#fff',
+    backgroundColor: colors.input,
   },
   value: { fontSize: 16, color: colors.text },
-  placeholder: { fontSize: 16, color: '#9ca3af' },
+  placeholder: { fontSize: 16, color: colors.faint },
   clear: { color: colors.primary, fontSize: 15 },
 });

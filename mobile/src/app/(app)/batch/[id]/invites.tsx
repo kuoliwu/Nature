@@ -231,9 +231,9 @@ const localStyles = StyleSheet.create({
   statValue: { fontSize: 22, fontWeight: '700' },
   statLabel: { fontSize: 12, color: colors.muted, marginTop: 2 },
   filters: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip: { borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
+  chip: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 14, color: colors.text },
-  chipTextOn: { color: '#fff', fontWeight: '600' },
+  chipTextOn: { color: colors.onPrimary, fontWeight: '600' },
   empty: { textAlign: 'center', color: colors.muted, marginTop: 30 },
 });

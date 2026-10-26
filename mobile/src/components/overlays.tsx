@@ -1,6 +1,6 @@
 /** 跨平台的輸入對話框與選單（Alert.prompt 只有 iOS 有，所以自己做） */
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { colors } from './ui';
 
@@ -31,7 +31,7 @@ export function PromptModal(props: {
             value={value}
             onChangeText={setValue}
             placeholder={props.placeholder}
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.faint}
             multiline={props.multiline}
             autoFocus
             autoCorrect={false}
@@ -63,10 +63,12 @@ export function ActionSheet(props: { visible: boolean; title?: string; options: 
       <Pressable style={[localStyles.backdrop, { justifyContent: 'flex-end' }]} onPress={props.onClose}>
         <View style={localStyles.sheet}>
           {props.title && <Text style={localStyles.sheetTitle}>{props.title}</Text>}
+          {/* 選項多時（例如批次的設定選單）手機螢幕放不下，中間可捲動，取消固定在底部 */}
+          <ScrollView style={localStyles.sheetOptions} bounces={false}>
           {props.options.map((o) => (
             <Pressable
               key={o.label}
-              style={({ pressed }) => [localStyles.sheetOption, pressed && { backgroundColor: '#f3f4f6' }]}
+              style={({ pressed }) => [localStyles.sheetOption, pressed && { backgroundColor: colors.subtle }]}
               onPress={() => {
                 props.onClose();
                 // iOS 上一個 Modal 還在關閉動畫時無法開下一個 Modal / Alert，稍等再執行。
@@ -78,6 +80,7 @@ export function ActionSheet(props: { visible: boolean; title?: string; options: 
               <Text style={[localStyles.sheetText, o.destructive && { color: colors.danger }]}>{o.label}</Text>
             </Pressable>
           ))}
+          </ScrollView>
           <Pressable style={localStyles.sheetOption} onPress={props.onClose}>
             <Text style={[localStyles.sheetText, { color: colors.muted }]}>取消</Text>
           </Pressable>
@@ -88,8 +91,8 @@ export function ActionSheet(props: { visible: boolean; title?: string; options: 
 }
 
 const localStyles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
-  dialog: { backgroundColor: '#fff', borderRadius: 14, padding: 20, gap: 12, width: '100%', maxWidth: 480, alignSelf: 'center' },
+  backdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: 24 },
+  dialog: { backgroundColor: colors.card, borderRadius: 14, padding: 20, gap: 12, width: '100%', maxWidth: 480, alignSelf: 'center' },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
   message: { fontSize: 14, color: colors.muted },
   input: {
@@ -107,14 +110,16 @@ const localStyles = StyleSheet.create({
   cancel: { fontSize: 16, color: colors.muted },
   ok: { fontSize: 16, color: colors.primary, fontWeight: '700' },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderRadius: 14,
     overflow: 'hidden',
     width: '100%',
     maxWidth: 480,
     alignSelf: 'center',
     marginBottom: 12,
+    maxHeight: '85%',
   },
+  sheetOptions: { flexGrow: 0, flexShrink: 1 },
   sheetTitle: { fontSize: 14, color: colors.muted, textAlign: 'center', paddingVertical: 12 },
   sheetOption: {
     paddingVertical: 16,

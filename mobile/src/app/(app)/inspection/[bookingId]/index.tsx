@@ -14,9 +14,9 @@ import { SERVICE_LABEL, STATUS_LABEL } from '@/lib/labels';
 import { useLoad } from '@/lib/useLoad';
 
 const RESULTS: { value: ResultValue; label: string; color: string; bg: string }[] = [
-  { value: 'pass', label: '✓ 合格', color: '#166534', bg: '#dcfce7' },
-  { value: 'fail', label: '✗ 不合格', color: '#991b1b', bg: '#fee2e2' },
-  { value: 'na', label: '不適用', color: '#374151', bg: '#e5e7eb' },
+  { value: 'pass', label: '✓ 合格', color: colors.ok.fg, bg: colors.ok.bg },
+  { value: 'fail', label: '✗ 不合格', color: colors.error.fg, bg: colors.error.bg },
+  { value: 'na', label: '不適用', color: colors.textSecondary, bg: colors.chip },
 ];
 
 export default function InspectionScreen() {
@@ -374,7 +374,7 @@ function Steps({ status }: { status: string }) {
       {steps.map((s, i) => (
         <View key={s.label} style={localStyles.step}>
           <View style={[localStyles.stepDot, s.done && localStyles.stepDotDone]}>
-            <Text style={[localStyles.stepNum, s.done && { color: '#fff' }]}>{s.done ? '✓' : i + 1}</Text>
+            <Text style={[localStyles.stepNum, s.done && { color: colors.onPrimary }]}>{s.done ? '✓' : i + 1}</Text>
           </View>
           <Text style={[localStyles.stepLabel, s.done && { color: colors.green, fontWeight: '600' }]}>{s.label}</Text>
         </View>
@@ -406,7 +406,7 @@ function NoteEditor(props: { value: string | null; editable: boolean; placeholde
         editable={props.editable}
         multiline
         placeholder={props.editable ? props.placeholder : '（無）'}
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor={colors.faint}
         onBlur={() => dirty && props.onSave(text.trim() || null)}
       />
       {props.editable && dirty && <Button label="儲存備註" variant="secondary" onPress={() => props.onSave(text.trim() || null)} />}
@@ -531,7 +531,7 @@ const localStyles = StyleSheet.create({
   meta: { fontSize: 14, color: colors.muted, marginTop: 2 },
   link: { color: colors.primary },
   checkedIn: { fontSize: 17, fontWeight: '700', color: colors.green },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: '#e5e7eb', marginTop: 10, overflow: 'hidden' },
+  progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.chip, marginTop: 10, overflow: 'hidden' },
   progressBar: { height: 8, backgroundColor: colors.green },
   category: { fontSize: 15, fontWeight: '700', color: colors.muted, marginTop: 8, marginLeft: 4 },
   itemHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
@@ -541,11 +541,11 @@ const localStyles = StyleSheet.create({
   pointName: { flex: 1, fontSize: 16, color: colors.text },
   pointExtra: { fontSize: 13, color: colors.primary },
   results: { flexDirection: 'row', gap: 8 },
-  resultBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff' },
+  resultBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, alignItems: 'center', backgroundColor: colors.input },
   resultText: { fontSize: 15, color: colors.text },
-  note: { fontSize: 14, color: '#374151', backgroundColor: '#f9fafb', borderRadius: 6, padding: 8 },
+  note: { fontSize: 14, color: colors.textSecondary, backgroundColor: colors.subtle, borderRadius: 6, padding: 8 },
   thumbs: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  thumb: { width: 64, height: 64, borderRadius: 6, backgroundColor: '#e5e7eb' },
+  thumb: { width: 64, height: 64, borderRadius: 6, backgroundColor: colors.chip },
   noteInput: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10, minHeight: 70, fontSize: 15, color: colors.text, textAlignVertical: 'top' },
   signature: { width: '100%', height: 140, backgroundColor: '#fff' },
   steps: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 8 },
@@ -554,10 +554,10 @@ const localStyles = StyleSheet.create({
   stepDotDone: { backgroundColor: colors.green, borderColor: colors.green },
   stepNum: { fontSize: 14, color: colors.muted, fontWeight: '700' },
   stepLabel: { fontSize: 13, color: colors.muted },
-  sheetHead: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: '#fff' },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.card },
   sheetTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  gridPhoto: { width: 104, height: 104, borderRadius: 8, backgroundColor: '#e5e7eb' },
+  gridPhoto: { width: 104, height: 104, borderRadius: 8, backgroundColor: colors.chip },
   viewer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' },
   viewerImage: { width: '100%', height: '80%' },
   viewerDelete: { position: 'absolute', bottom: 48, backgroundColor: colors.danger, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },

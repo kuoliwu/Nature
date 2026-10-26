@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 
 from app.database import SessionLocal
-from app.models import Booking, BookingBatch, Inspection, InspectionStatus, ServiceType, Unit
+from app.models import Booking, BookingBatch, BookingStatus, Inspection, InspectionStatus, ServiceType, Unit
 from app.services.slots import generate_slots
 from tests.conftest import ADMIN
 
@@ -121,3 +121,71 @@ def test_cover_photos(client):
     p = client.delete(f"/projects/{pid}/covers/inspection", headers=ADMIN).json()
     assert p["covers"]["inspection"] is None
     assert client.get(f"/api/public/book/{tokens['inspection']}").json()["cover_url"] is None
+
+
+def test_project_pins_are_per_user(client):
+    """釘選只影響自己的建案列表：釘選的排最前面（最近釘選的在上）"""
+    ids = [client.post("/projects", headers=ADMIN, json={"name": f"釘選測試{i}"}).json()["id"] for i in range(3)]
+    first, middle, last = ids
+    assert client.put(f"/projects/{first}/pin", headers=ADMIN).status_code == 204
+    assert client.put(f"/projects/{middle}/pin", headers=ADMIN).status_code == 204
+    assert client.put(f"/projects/{middle}/pin", headers=ADMIN).status_code == 204  # 重複釘選不會出錯
+    rows = client.get("/projects", headers=ADMIN).json()
+    assert [r["id"] for r in rows[:2]] == [middle, first] and rows[0]["pinned"] and rows[1]["pinned"]
+    assert not next(r for r in rows if r["id"] == last)["pinned"]
+
+    # 其他人員看不到我的釘選
+    other = {"name": "釘選同事", "phone": "0955987001", "password": "pin-pass-123", "permissions": []}
+    assert client.post("/users", headers=ADMIN, json=other).status_code == 201
+    token = client.post("/auth/login", json={"phone": other["phone"], "password": other["password"]}).json()["access_token"]
+    theirs = client.get("/projects", headers={"Authorization": f"Bearer {token}"}).json()
+    assert not any(r["pinned"] for r in theirs)
+
+    assert client.delete(f"/projects/{middle}/pin", headers=ADMIN).status_code == 204
+    rows = client.get("/projects", headers=ADMIN).json()
+    assert rows[0]["id"] == first and not next(r for r in rows if r["id"] == middle)["pinned"]
+    assert client.put("/projects/999999/pin", headers=ADMIN).status_code == 404
+
+
+def test_project_order_per_user_within_pin_groups(client):
+    """長按拖曳排序：每人各自的順序；釘選的仍在最前面；沒排過的新建案排在群組最前面"""
+    a, b, c = (client.post("/projects", headers=ADMIN, json={"name": f"排序測試{n}"}).json()["id"] for n in "ABC")
+    ids = [r["id"] for r in client.get("/projects", headers=ADMIN).json()]
+    # 把 A 拖到 C 前面、B 最後（其餘維持）
+    rest = [i for i in ids if i not in (a, b, c)]
+    assert client.put("/projects/order", headers=ADMIN, json={"project_ids": [a, c, *rest, b, 999999]}).status_code == 204
+    rows = [r["id"] for r in client.get("/projects", headers=ADMIN).json() if not r["pinned"]]
+    assert rows[:2] == [a, c] and rows[-1] == b
+
+    # 新建案還沒排過 → 排在最前面
+    d = client.post("/projects", headers=ADMIN, json={"name": "排序測試D"}).json()["id"]
+    rows = [r["id"] for r in client.get("/projects", headers=ADMIN).json() if not r["pinned"]]
+    assert rows[:3] == [d, a, c]
+
+    # 釘選 B → 排在釘選群組最上面（換群組時清掉原本排的位置）
+    client.put(f"/projects/{b}/pin", headers=ADMIN)
+    assert client.get("/projects", headers=ADMIN).json()[0]["id"] == b
+    client.delete(f"/projects/{b}/pin", headers=ADMIN)
+
+
+def test_schedule_counts_two_weeks(client):
+    """行程頁兩週日曆：每天的預約數"""
+    with SessionLocal() as db:
+        pid = client.post("/projects", headers=ADMIN, json={"name": "行程日曆建案"}).json()["id"]
+        units = [Unit(project_id=pid, unit_no=f"S-{i}") for i in range(3)]
+        db.add_all(units)
+        db.flush()
+        day1, day2 = TODAY + timedelta(days=2), TODAY + timedelta(days=5)
+        b1 = make_batch(db, pid, ServiceType.VISIT, day1)
+        b2 = make_batch(db, pid, ServiceType.INSPECTION, day2)
+        book(db, b1, units[0])
+        book(db, b1, units[1])
+        book(db, b2, units[2])
+        db.add(Booking(batch_id=b2.id, slot_id=b2.slots[0].id, unit_id=units[0].id, contact_name="取消", contact_phone="0",
+                       status=BookingStatus.CANCELLED))  # 取消的不算
+        db.commit()
+    rows = client.get("/inspections/schedule/counts", headers=ADMIN, params={"start": str(TODAY), "days": 14}).json()
+    assert len(rows) == 14 and rows[0]["date"] == str(TODAY)
+    counts = {r["date"]: r["count"] for r in rows}
+    assert counts[str(day1)] >= 2 and counts[str(day2)] >= 1
+    assert client.get("/inspections/schedule/counts", headers=ADMIN, params={"start": str(TODAY), "days": 100}).status_code == 422

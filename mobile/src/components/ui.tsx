@@ -15,16 +15,10 @@ import {
   ViewStyle,
 } from 'react-native';
 
-export const colors = {
-  primary: '#1d4ed8',
-  green: '#047857',
-  danger: '#b91c1c',
-  text: '#111827',
-  muted: '#6b7280',
-  border: '#d1d5db',
-  bg: '#f3f4f6',
-  card: '#ffffff',
-};
+import { palette } from '@/lib/theme';
+
+/** 目前主題的色票（暗夜墨綠／亮色，見 lib/theme.ts） */
+export const colors = palette;
 
 export const MAX_WIDTH = 720;
 
@@ -61,7 +55,7 @@ export function Field({ label, hint, ...props }: TextInputProps & { label: strin
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor={colors.faint}
         autoCorrect={false}
         {...props}
         style={[styles.input, props.editable === false && styles.inputDisabled, props.style]}
@@ -97,7 +91,7 @@ export function Button(props: {
   variant?: 'primary' | 'secondary' | 'outline' | 'danger';
 }) {
   const variant = props.variant ?? 'primary';
-  const textColor = variant === 'outline' ? colors.primary : '#fff';
+  const textColor = variant === 'outline' ? colors.primary : colors.onPrimary;
   const disabled = props.disabled || props.loading;
   return (
     <Pressable
@@ -115,11 +109,7 @@ export function Button(props: {
 }
 
 export function Message({ kind, text, children }: { kind: 'ok' | 'error' | 'info'; text: string; children?: ReactNode }) {
-  const palette = {
-    ok: { bg: '#f0fdf4', border: '#86efac', fg: '#166534', icon: '✓ ' },
-    error: { bg: '#fef2f2', border: '#fca5a5', fg: '#991b1b', icon: '✕ ' },
-    info: { bg: '#eff6ff', border: '#93c5fd', fg: '#1e40af', icon: '' },
-  }[kind];
+  const palette = { ...colors[kind], icon: { ok: '✓ ', error: '✕ ', info: '' }[kind] };
   return (
     <View style={[styles.message, { backgroundColor: palette.bg, borderColor: palette.border }]}>
       <Text style={[styles.messageText, { color: palette.fg }]}>
@@ -143,7 +133,7 @@ const buttonVariants = StyleSheet.create({
   primary: { backgroundColor: colors.primary },
   secondary: { backgroundColor: colors.green },
   danger: { backgroundColor: colors.danger },
-  outline: { backgroundColor: '#fff', borderWidth: 1, borderColor: colors.primary },
+  outline: { backgroundColor: colors.input, borderWidth: 1, borderColor: colors.primary },
 });
 
 export const styles = StyleSheet.create({
@@ -154,7 +144,7 @@ export const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: 12, padding: 16, gap: 4 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 6 },
   field: { marginBottom: 10 },
-  label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 6 },
+  label: { fontSize: 14, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -163,9 +153,9 @@ export const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
     color: colors.text,
-    backgroundColor: '#fff',
+    backgroundColor: colors.input,
   },
-  inputDisabled: { backgroundColor: '#f9fafb', color: colors.muted },
+  inputDisabled: { backgroundColor: colors.subtle, color: colors.muted },
   hint: { fontSize: 12, color: colors.muted, marginTop: 4 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 12 },
   toggleLabel: { fontSize: 15, color: colors.text },
@@ -214,5 +204,5 @@ const rowStyles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: '600', color: colors.text },
   subtitle: { fontSize: 13, color: colors.muted, marginTop: 2 },
   right: { fontSize: 14, color: colors.muted },
-  chevron: { fontSize: 22, color: '#9ca3af', marginLeft: 4 },
+  chevron: { fontSize: 22, color: colors.faint, marginLeft: 4 },
 });

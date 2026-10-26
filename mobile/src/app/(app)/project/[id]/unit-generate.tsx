@@ -119,10 +119,10 @@ function RangeRow(props: {
     : ({ keyboardType: 'number-pad', maxLength: 2 } as const);
   return (
     <View style={localStyles.range}>
-      <TextInput style={localStyles.rangeInput} value={props.from} onChangeText={props.onFrom} placeholder={props.placeholder[0]} placeholderTextColor="#9ca3af" {...inputProps} />
+      <TextInput style={localStyles.rangeInput} value={props.from} onChangeText={props.onFrom} placeholder={props.placeholder[0]} placeholderTextColor={colors.faint} {...inputProps} />
       {props.suffix && <Text style={localStyles.suffix}>{props.suffix}</Text>}
       <Text style={localStyles.to}>到</Text>
-      <TextInput style={localStyles.rangeInput} value={props.to} onChangeText={props.onTo} placeholder={props.placeholder[1]} placeholderTextColor="#9ca3af" {...inputProps} />
+      <TextInput style={localStyles.rangeInput} value={props.to} onChangeText={props.onTo} placeholder={props.placeholder[1]} placeholderTextColor={colors.faint} {...inputProps} />
       {props.suffix && <Text style={localStyles.suffix}>{props.suffix}</Text>}
     </View>
   );
@@ -139,7 +139,7 @@ const localStyles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     color: colors.text,
-    backgroundColor: '#fff',
+    backgroundColor: colors.input,
   },
   suffix: { fontSize: 16, color: colors.muted },
   to: { fontSize: 16, color: colors.text, marginHorizontal: 6 },
@@ -147,6 +147,6 @@ const localStyles = StyleSheet.create({
   chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 15, color: colors.text },
-  chipTextOn: { color: '#fff', fontWeight: '600' },
-  preview: { fontSize: 14, color: '#374151', lineHeight: 20 },
+  chipTextOn: { color: colors.onPrimary, fontWeight: '600' },
+  preview: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
 });

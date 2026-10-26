@@ -1,10 +1,11 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Card, Field, Message, Screen, colors } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { setTheme, THEME_OPTIONS, themeName } from '@/lib/theme';
 
 export default function AccountScreen() {
   const { user, baseUrl, signIn, signOut, can } = useAuth();
@@ -15,6 +16,7 @@ export default function AccountScreen() {
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [themeNote, setThemeNote] = useState<string | null>(null);
 
   if (!user) return null;
 
@@ -45,6 +47,28 @@ export default function AccountScreen() {
         <Link href="/connect" style={localStyles.link}>
           主機連線設定
         </Link>
+      </Card>
+
+      <Card title="配色">
+        <View style={localStyles.segments}>
+          {THEME_OPTIONS.map((o) => {
+            const on = o.value === themeName;
+            return (
+              <Pressable
+                key={o.value}
+                disabled={on}
+                onPress={async () => {
+                  if (!(await setTheme(o.value))) setThemeNote('已儲存，請關閉 APP 再重新開啟即可套用');
+                }}
+                style={({ pressed }) => [localStyles.segment, on && localStyles.segmentOn, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={[localStyles.segmentText, on && localStyles.segmentTextOn]}>{on ? `✓ ${o.label}` : o.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={localStyles.hint}>只套用在這台手機或這個瀏覽器，切換後畫面會重新載入</Text>
+        {themeNote && <Message kind="info" text={themeNote} />}
       </Card>
 
       <Card title="修改密碼">
@@ -85,6 +109,12 @@ export default function AccountScreen() {
 }
 
 const localStyles = StyleSheet.create({
-  meta: { fontSize: 15, color: '#374151' },
+  meta: { fontSize: 15, color: colors.textSecondary },
   link: { color: colors.primary, fontSize: 15, marginTop: 8 },
+  hint: { fontSize: 12, color: colors.muted, marginTop: 6 },
+  segments: { flexDirection: 'row', gap: 8 },
+  segment: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: colors.input },
+  segmentOn: { borderColor: colors.primary, backgroundColor: colors.primary },
+  segmentText: { fontSize: 15, fontWeight: '600', color: colors.text },
+  segmentTextOn: { color: colors.onPrimary },
 });

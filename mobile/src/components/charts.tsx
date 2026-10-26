@@ -8,34 +8,39 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors } from './ui';
 
-// 色票已用 dataviz 驗證工具檢查（色盲可辨識、亮度順序）
-export const chartColors = {
-  surface: '#ffffff',
-  track: '#cde2fb', // 未完成（同色系最淺）
-  stage: { completed: '#1c5cab', booked: '#3987e5', invited: '#86b6ef', not_invited: '#cde2fb' },
-  service: { visit: '#2a78d6', inspection: '#eb6834', health_check: '#1baf7a' },
-  single: '#2a78d6',
-  critical: '#d03b3b',
-  grid: '#e1e0d9',
-};
+// 色票已用 dataviz 驗證工具檢查（色盲可辨識、亮度順序）；亮色／暗色各一組，見 lib/theme.ts
+export const chartColors = colors.chart;
 
 export type Segment = { key: string; label: string; value: number; color: string };
 
-export function StatTile(props: { label: string; value: string | number; sub?: string; status?: 'critical' | 'good' }) {
+export function StatTile(props: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  status?: 'critical' | 'good';
+  meter?: { value: number; total: number }; // 數字下方的小進度條（例如完成戶數）
+  wide?: boolean; // 佔滿一整列
+}) {
   return (
-    <View style={s.tile}>
+    <View style={[s.tile, props.wide && s.tileWide]}>
       <Text style={s.tileLabel}>{props.label}</Text>
       <View style={s.tileRow}>
-        {props.status && <Text style={{ color: props.status === 'critical' ? chartColors.critical : '#0ca30c' }}>{props.status === 'critical' ? '⚠︎ ' : '✓ '}</Text>}
+        {props.status && <Text style={{ color: props.status === 'critical' ? chartColors.critical : chartColors.good }}>{props.status === 'critical' ? '⚠︎ ' : '✓ '}</Text>}
         <Text style={s.tileValue}>{props.value}</Text>
       </View>
+      {props.meter && (
+        <View style={{ marginVertical: 4 }}>
+          <Meter value={props.meter.value} total={props.meter.total} height={6} label={`${props.label} ${props.value}`} />
+        </View>
+      )}
       {!!props.sub && <Text style={s.tileSub}>{props.sub}</Text>}
     </View>
   );
 }
 
+/** 表格／圖表可切換的卡片；預設顯示表格 */
 export function ChartCard(props: { title: string; subtitle?: string; table: ReactNode; children: ReactNode; legend?: Segment[] }) {
-  const [showTable, setShowTable] = useState(false);
+  const [showTable, setShowTable] = useState(true);
   return (
     <View style={s.card}>
       <View style={s.cardHead}>
@@ -43,9 +48,22 @@ export function ChartCard(props: { title: string; subtitle?: string; table: Reac
           <Text style={s.cardTitle}>{props.title}</Text>
           {!!props.subtitle && <Text style={s.cardSub}>{props.subtitle}</Text>}
         </View>
-        <Pressable onPress={() => setShowTable((v) => !v)} hitSlop={8}>
-          <Text style={s.toggle}>{showTable ? '圖表' : '表格'}</Text>
-        </Pressable>
+        <View style={s.toggles} accessibilityRole="tablist">
+          {[
+            { table: true, label: '表格' },
+            { table: false, label: '圖表' },
+          ].map((o) => (
+            <Pressable
+              key={o.label}
+              onPress={() => setShowTable(o.table)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: showTable === o.table }}
+              style={[s.toggle, showTable === o.table && s.toggleOn]}
+            >
+              <Text style={[s.toggleText, showTable === o.table && s.toggleTextOn]}>{o.label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
       {props.legend && !showTable && <Legend items={props.legend} />}
       {showTable ? props.table : props.children}
@@ -62,6 +80,25 @@ function Legend({ items }: { items: Segment[] }) {
           <Text style={s.legendText}>{i.label}</Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+/** 單一比例的進度長條（例如已預約 ÷ 開放名額）：填滿段 + 剩餘軌道，中間 2px 間隔 */
+export function Meter(props: { value: number; total: number; height?: number; label?: string }) {
+  const height = props.height ?? 16;
+  const filled = Math.min(props.value, props.total);
+  const rest = Math.max(props.total - filled, 0);
+  const radius = { borderRadius: Math.min(4, height / 2) };
+  return (
+    <View
+      style={[s.stack, { height }]}
+      accessibilityRole="progressbar"
+      accessibilityLabel={props.label}
+      accessibilityValue={{ min: 0, max: props.total, now: filled }}
+    >
+      {filled > 0 && <View style={[{ flex: filled, height, backgroundColor: chartColors.single }, radius]} />}
+      {(rest > 0 || props.total === 0) && <View style={[{ flex: rest || 1, height, backgroundColor: chartColors.track }, radius]} />}
     </View>
   );
 }
@@ -182,42 +219,59 @@ export function HBars(props: { rows: { key: string; label: string; value: number
   );
 }
 
-export function DataTable(props: { headers: string[]; rows: (string | number)[][] }) {
-  return (
-    <View style={s.table}>
+/** 第一欄是名稱、其餘數字靠右；欄位多時（手機放不下）可左右捲動；emphasizeLast：最後一欄加粗（例如完成率） */
+export function DataTable(props: { headers: string[]; rows: (string | number)[][]; emphasizeLast?: boolean }) {
+  const cols = props.headers.length;
+  const last = cols - 1;
+  const table = (
+    <View style={[s.table, cols > 4 && { minWidth: 110 + (cols - 1) * 64 }]}>
       <View style={[s.tr, s.thead]}>
         {props.headers.map((h, i) => (
-          <Text key={h} style={[s.td, s.th, i > 0 && s.num]}>{h}</Text>
+          <Text key={h} style={[s.td, s.th, i === 0 ? s.firstCol : s.num]}>{h}</Text>
         ))}
       </View>
       {props.rows.map((r, ri) => (
-        <View key={ri} style={s.tr}>
+        <View key={ri} style={[s.tr, ri % 2 === 1 && s.zebra]}>
           {r.map((v, i) => (
-            <Text key={i} style={[s.td, i > 0 && s.num]}>{v}</Text>
+            <Text key={i} style={[s.td, i === 0 ? [s.firstCol, s.rowName] : s.num, props.emphasizeLast && i === last && s.emphasis]}>
+              {v}
+            </Text>
           ))}
         </View>
       ))}
     </View>
+  );
+  return cols > 4 ? (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      {table}
+    </ScrollView>
+  ) : (
+    table
   );
 }
 
 export const pct = (n: number, total: number) => (total ? `${Math.round((n / total) * 100)}%` : '—');
 
 const s = StyleSheet.create({
-  tile: { flexGrow: 1, flexBasis: 140, backgroundColor: colors.card, borderRadius: 12, padding: 14, gap: 2 },
+  tile: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.card, borderRadius: 12, padding: 14, gap: 2 },
+  tileWide: { flexBasis: '100%' },
   tileLabel: { fontSize: 13, color: colors.muted },
   tileRow: { flexDirection: 'row', alignItems: 'baseline' },
-  tileValue: { fontSize: 26, fontWeight: '600', color: colors.text },
+  tileValue: { fontSize: 24, fontWeight: '700', color: colors.text },
   tileSub: { fontSize: 12, color: colors.muted },
   card: { backgroundColor: colors.card, borderRadius: 12, padding: 16, gap: 12 },
   cardHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   cardSub: { fontSize: 12, color: colors.muted, marginTop: 2 },
-  toggle: { fontSize: 13, color: colors.primary },
+  toggles: { flexDirection: 'row', borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden' },
+  toggle: { paddingHorizontal: 12, paddingVertical: 5 },
+  toggleOn: { backgroundColor: colors.primary },
+  toggleText: { fontSize: 13, color: colors.textSecondary },
+  toggleTextOn: { color: colors.onPrimary, fontWeight: '600' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   swatch: { width: 12, height: 12, borderRadius: 3 },
-  legendText: { fontSize: 12, color: '#374151' },
+  legendText: { fontSize: 12, color: colors.textSecondary },
   rowHead: { flexDirection: 'row', justifyContent: 'space-between' },
   rowLabel: { fontSize: 14, fontWeight: '600', color: colors.text },
   rowValue: { fontSize: 13, color: colors.muted },
@@ -226,20 +280,24 @@ const s = StyleSheet.create({
   startRadius: { borderTopLeftRadius: 4, borderBottomLeftRadius: 4 },
   endRadius: { borderTopRightRadius: 4, borderBottomRightRadius: 4 },
   picked: { opacity: 0.75 },
-  readout: { fontSize: 13, color: '#374151', minHeight: 18 },
+  readout: { fontSize: 13, color: colors.textSecondary, minHeight: 18 },
   columns: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: chartColors.grid },
   column: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', minWidth: 22, overflow: 'visible' },
-  colValue: { fontSize: 11, color: '#374151', marginBottom: 2, width: 60, textAlign: 'center' },
+  colValue: { fontSize: 11, color: colors.textSecondary, marginBottom: 2, width: 60, textAlign: 'center' },
   colLabel: { fontSize: 10, color: colors.muted, marginTop: 4, height: 16, width: 44, textAlign: 'center' },
   hbarLabel: { fontSize: 13, color: colors.text },
   hbarTag: { fontSize: 12, color: colors.muted },
   hbarRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  hbarValue: { fontSize: 12, color: '#374151', minWidth: 18 },
-  table: { borderTopWidth: 1, borderTopColor: colors.border },
+  hbarValue: { fontSize: 12, color: colors.textSecondary, minWidth: 18 },
+  table: { borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, overflow: 'hidden' },
   tr: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  thead: { backgroundColor: '#f9fafb' },
-  td: { flex: 1, fontSize: 13, paddingVertical: 6, paddingHorizontal: 4, color: colors.text },
-  th: { fontWeight: '700', color: '#374151' },
+  zebra: { backgroundColor: colors.subtle },
+  thead: { backgroundColor: colors.subtle },
+  td: { flex: 1, fontSize: 14, paddingVertical: 9, paddingHorizontal: 8, color: colors.text },
+  firstCol: { flex: 1.6 },
+  rowName: { fontWeight: '600' },
+  emphasis: { fontWeight: '700' },
+  th: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, paddingVertical: 7 },
   num: { textAlign: 'right', fontVariant: ['tabular-nums'] },
 });

@@ -67,7 +67,7 @@ export function SignaturePad(props: {
       {/* pointerEvents=none：觸控一律落在外層 View，座標才會以簽名板為基準 */}
       <Svg width="100%" height="100%" pointerEvents="none">
         {props.strokes.map((s, i) => (
-          <Path key={i} d={toPath(s)} stroke={colors.text} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <Path key={i} d={toPath(s)} stroke={colors.signPad.ink} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
         ))}
       </Svg>
       {props.strokes.length === 0 && (
@@ -85,9 +85,9 @@ const localStyles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: colors.border,
     borderRadius: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.signPad.bg,
     overflow: 'hidden',
   },
   hint: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
-  hintText: { color: '#9ca3af', fontSize: 16 },
+  hintText: { color: colors.signPad.hint, fontSize: 16 },
 });

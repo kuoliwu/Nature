@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -18,12 +18,17 @@ from app.models import (
     InspectionCategory,
     InspectionItem,
     Project,
+    ProjectOrder,
+    ProjectPin,
     ServiceType,
     Unit,
+    User,
 )
 from app.schemas import (
     DownloadLinkOut,
     InspectionCategoryOut,
+    ProjectImportOut,
+    ProjectOrderIn,
     ProjectIn,
     ProjectOut,
     ProjectUpdate,
@@ -36,8 +41,10 @@ from app.schemas import (
     UnitUpdate,
 )
 from app.seed import copy_template_to_project
+from app.services.handbook import ensure_template as ensure_handbook_template
 from app.services.dashboard import build_dashboard
 from app.services.inspection_media import MediaError, save_image
+from app.services.project_backup import BackupError, backup_filename, export_project, import_project
 from app.services.timeline import build_timeline
 from app.services.project_report import build_html, build_xlsx
 from app.services.auth import create_download_token, get_current_user, read_download_token, require_permission
@@ -51,6 +58,7 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024
 # 登入即可讀取；新增 / 修改需要「建案 / 戶別管理」權限
 router = APIRouter(dependencies=[Depends(get_current_user)])
 manage = [Depends(require_permission("project.manage"))]
+MAX_BACKUP_BYTES = 500 * 1024 * 1024  # 建案備份檔（含照片）上限
 
 
 def get_project_or_404(db: Session, project_id: int) -> Project:
@@ -105,13 +113,64 @@ def create_project(body: ProjectIn, request: Request, db: Session = Depends(get_
     db.flush()
     for service in CHECKLIST_SERVICES:  # 驗屋、健檢各一份，從公司範本複製
         copy_template_to_project(db, project, service)
+    ensure_handbook_template(db, project)  # 步驟 5 住屋手冊的欄位範本
     db.commit()
     return _project_out(db, project, request)
 
 
 @router.get("/projects", response_model=list[ProjectOut], tags=["建案"])
-def list_projects(request: Request, db: Session = Depends(get_db)):
-    return [_project_out(db, p, request) for p in db.scalars(select(Project).order_by(Project.id.desc()))]
+def list_projects(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+    自己的排序：釘選的在最前面，其餘在後；各群組內依自己拖曳排出的順序，
+    沒排過的（例如新建案）排在該群組最前面，再依釘選時間、建立時間新到舊。
+    """
+    pins = dict(db.execute(select(ProjectPin.project_id, ProjectPin.pinned_at).where(ProjectPin.user_id == user.id)).all())
+    order = dict(db.execute(select(ProjectOrder.project_id, ProjectOrder.position).where(ProjectOrder.user_id == user.id)).all())
+    projects = sorted(
+        db.scalars(select(Project).order_by(Project.id.desc())),
+        key=lambda p: (p.id not in pins, order.get(p.id, -1), -pins[p.id].timestamp() if p.id in pins else 0),
+    )
+    out = []
+    for p in projects:
+        item = _project_out(db, p, request)
+        item.pinned = p.id in pins
+        out.append(item)
+    return out
+
+
+@router.put("/projects/order", status_code=204, tags=["建案"], summary="儲存自己的建案順序（長按拖曳排序）")
+def save_project_order(body: ProjectOrderIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    existing = {o.project_id: o for o in db.scalars(select(ProjectOrder).where(ProjectOrder.user_id == user.id))}
+    valid = set(db.scalars(select(Project.id).where(Project.id.in_(body.project_ids))))
+    for position, project_id in enumerate(pid for pid in body.project_ids if pid in valid):
+        if project_id in existing:
+            existing[project_id].position = position
+        else:
+            db.add(ProjectOrder(user_id=user.id, project_id=project_id, position=position))
+    db.commit()
+
+
+@router.put("/projects/{project_id}/pin", status_code=204, tags=["建案"], summary="釘選建案（只影響自己的列表）")
+def pin_project(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    get_project_or_404(db, project_id)
+    if not db.scalar(select(ProjectPin).where(ProjectPin.user_id == user.id, ProjectPin.project_id == project_id)):
+        db.add(ProjectPin(user_id=user.id, project_id=project_id))
+        _clear_order(db, user, project_id)
+        db.commit()
+
+
+@router.delete("/projects/{project_id}/pin", status_code=204, tags=["建案"], summary="取消釘選")
+def unpin_project(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    pin = db.scalar(select(ProjectPin).where(ProjectPin.user_id == user.id, ProjectPin.project_id == project_id))
+    if pin:
+        db.delete(pin)
+        _clear_order(db, user, project_id)
+        db.commit()
+
+
+def _clear_order(db: Session, user: User, project_id: int) -> None:
+    """換到另一群（釘選／未釘選）時清掉自己排的位置 → 排在新群組最上面，之後可再拖曳調整"""
+    db.execute(delete(ProjectOrder).where(ProjectOrder.user_id == user.id, ProjectOrder.project_id == project_id))
 
 
 # 要放在 /projects/{project_id} 之前，否則 timeline 會被當成建案編號
@@ -172,14 +231,46 @@ def update_project(project_id: int, body: ProjectUpdate, request: Request, db: S
 
 @router.delete("/projects/{project_id}", status_code=204, tags=["建案"], dependencies=manage)
 def delete_project(project_id: int, db: Session = Depends(get_db)):
+    """刪除建案與底下所有資料（有預約紀錄的也可以刪；APP 會提醒先匯出建案備份，之後可以匯入還原）"""
     project = get_project_or_404(db, project_id)
-    has_bookings = db.scalar(
-        select(func.count(Booking.id)).join(Unit, Booking.unit_id == Unit.id).where(Unit.project_id == project.id)
-    )
-    if has_bookings:
-        raise HTTPException(status.HTTP_409_CONFLICT, "此建案已有預約紀錄，不能刪除")
+    # 預約要先刪：預約指向時段的外鍵是 RESTRICT，直接刪建案時時段會先被刪而失敗。
+    # 驗屋結果、照片、報告等掛在預約底下的資料由資料庫外鍵 CASCADE 一起刪除。
+    batch_ids = select(BookingBatch.id).where(BookingBatch.project_id == project.id)
+    db.execute(delete(Booking).where(Booking.batch_id.in_(batch_ids)))
     db.delete(project)
     db.commit()
+
+
+@router.post("/projects/import", response_model=ProjectImportOut, status_code=201, tags=["建案"], dependencies=manage,
+             summary="從建案備份檔（.zip）還原成一個新建案")
+async def import_project_backup(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    content = await file.read(MAX_BACKUP_BYTES + 1)
+    if len(content) > MAX_BACKUP_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"備份檔不能超過 {MAX_BACKUP_BYTES // 1024 // 1024}MB")
+    try:
+        project, counts = import_project(db, content)
+    except BackupError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    db.commit()
+    return ProjectImportOut(project=_project_out(db, project, request), counts=counts)
+
+
+@router.post("/projects/{project_id}/backup-link", response_model=DownloadLinkOut, tags=["建案"], dependencies=manage,
+             summary="匯出建案備份檔（資料＋照片等檔案，.zip）的 5 分鐘下載連結")
+def project_backup_link(project_id: int, request: Request, db: Session = Depends(get_db)):
+    project = get_project_or_404(db, project_id)
+    token, expires = create_download_token({"kind": "project_backup", "project_id": project.id})
+    return DownloadLinkOut(
+        url=f"{str(request.base_url).rstrip('/')}/downloads/{token}", filename=backup_filename(project), expires_at=expires,
+    )
+
+
+def project_backup_response(db: Session, project: Project) -> Response:
+    return Response(
+        export_project(db, project), media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=backup.zip; filename*=UTF-8''{quote(backup_filename(project))}"},
+    )
 
 
 @router.get("/projects/{project_id}/dashboard", tags=["建案"], summary="建案儀表板：各階段進度、每日預約、檢查結果")

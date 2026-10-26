@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Booking, Inspection, InspectionPhoto, Project, Report, ServiceType
-from app.routers.projects import cover_path_attr, project_report_response, units_export_response
+from app.models import Booking, HandbookAttachment, HandbookPhoto, Inspection, InspectionPhoto, Project, Report, ServiceType, Unit
+from app.routers.projects import cover_path_attr, project_backup_response, project_report_response, units_export_response
 from app.services.auth import read_download_token
 
 router = APIRouter(tags=["下載"])
@@ -35,6 +35,11 @@ def download(token: str, db: Session = Depends(get_db)):
         from app.routers.sheets import sheet_response
 
         return sheet_response(db, payload["name"], payload, payload["fmt"])
+    if payload.get("kind") == "project_backup":
+        project = db.get(Project, payload["project_id"])
+        if project is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "找不到建案")
+        return project_backup_response(db, project)
     if payload.get("kind") == "project_cover":
         project = db.get(Project, payload["project_id"])
         rel = project and getattr(project, cover_path_attr(ServiceType(payload["service"])))
@@ -71,5 +76,30 @@ def download(token: str, db: Session = Depends(get_db)):
             media_type="application/pdf",
             # inline：瀏覽器直接預覽，不強制下載
             headers={"Content-Disposition": f"inline; filename=report.pdf; filename*=UTF-8''{quote(filename)}"},
+        )
+    if payload.get("kind") == "handbook":
+        from app.services import handbook
+
+        unit = db.get(Unit, payload["id"])
+        if unit is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "找不到此戶")
+        pdf = handbook.build_pdf(db, unit)
+        db.commit()
+        return Response(
+            pdf, media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename=handbook.pdf; filename*=UTF-8''{quote(handbook.filename(unit))}"},
+        )
+    if payload.get("kind") == "handbook_photo":
+        photo = db.get(HandbookPhoto, payload["id"])
+        if photo is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "照片已刪除")
+        return FileResponse(settings.storage_dir / photo.file_path, media_type="image/jpeg")
+    if payload.get("kind") == "handbook_attachment":
+        attachment = db.get(HandbookAttachment, payload["id"])
+        if attachment is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "附件已刪除")
+        return FileResponse(
+            settings.storage_dir / attachment.file_path, media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename=attachment.pdf; filename*=UTF-8''{quote(attachment.title + '.pdf')}"},
         )
     raise HTTPException(status.HTTP_404_NOT_FOUND, "連結無效")

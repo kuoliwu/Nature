@@ -123,14 +123,15 @@ def test_close_slots_and_capacity(client):
     assert not any(s["is_open"] for s in day["slots"])
     assert client.get(f"/batches/{b['id']}", headers=ADMIN).json()["open_slot_count"] == 1
 
-    # 有預約時：名額不能低於已預約數；批次與建案不能刪除
+    # 有預約時：名額不能低於已預約數；批次與住戶不能刪除（整個建案可以刪，APP 會提醒先匯出建案備份）
     book(b["id"], slot["id"], unit_id)
     detail = client.get(f"/batches/{b['id']}", headers=ADMIN).json()
     assert detail["booked_count"] == 1 and detail["days"][0]["slots"][0]["booked"] == 1
     assert client.patch(f"/slots/{slot['id']}", headers=ADMIN, json={"capacity": 0}).status_code == 422
     assert client.delete(f"/batches/{b['id']}", headers=ADMIN).status_code == 409
     assert client.delete(f"/units/{unit_id}", headers=ADMIN).status_code == 409
-    assert client.delete(f"/projects/{pid}", headers=ADMIN).status_code == 409
+    assert client.delete(f"/projects/{pid}", headers=ADMIN).status_code == 204
+    assert client.get(f"/batches/{b['id']}", headers=ADMIN).status_code == 404
 
 
 # --- 檢查項目清單 -----------------------------------------------------------
